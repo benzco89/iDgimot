@@ -310,8 +310,13 @@ app.get('/api/health', (req, res) => {
 
 // Catch-all handler: serve React app for any non-API routes (production only)
 if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  app.get('/*', (req, res) => {
+    // Only serve React app for non-API routes
+    if (!req.path.startsWith('/api/')) {
+      res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    } else {
+      res.status(404).json({ error: 'API route not found' });
+    }
   });
 }
 
