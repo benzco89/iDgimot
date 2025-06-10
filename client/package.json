@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx vite build",
+    "build": "vite build",
+    "build-safe": "pwd && ls -la && vite build",
     "build-direct": "vite build",
     "build-with-types": "tsc -b && vite build",
     "lint": "eslint .",

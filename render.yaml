@@ -3,7 +3,7 @@ services:
     name: kan-news-content-assistant
     env: node
     plan: free
-    buildCommand: npm run render-build
+    buildCommand: npm install --prefix client && npm install --prefix server && cd client && npx vite build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
