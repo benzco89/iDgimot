@@ -48,9 +48,8 @@ function App() {
       setProgress({ stage: 'upload', percentage: 30, message: 'מעלה קובץ לשרת...' })
 
       // Use environment-aware API URL
-      const apiUrl = import.meta.env.PROD 
-        ? '/api/generate'  // In production, use relative path
-        : 'http://localhost:3001/api/generate'; // In development, use localhost
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/generate` : '/api/generate';
 
       const response = await fetch(apiUrl, {
         method: 'POST',

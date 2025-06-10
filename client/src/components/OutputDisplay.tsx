@@ -52,11 +52,10 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
       formData.append('timestamp', timestamp);
 
       // Use environment-aware API URL
-    const apiUrl = import.meta.env.PROD 
-      ? '/api/extract-thumbnail'  // In production, use relative path
-      : 'http://localhost:3001/api/extract-thumbnail'; // In development, use localhost
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/extract-thumbnail` : '/api/extract-thumbnail';
 
-    const response = await fetch(apiUrl, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       });
@@ -64,11 +63,10 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
       const data = await response.json();
       
       if (data.success) {
+        const thumbnailUrl = apiBaseUrl ? `${apiBaseUrl}${data.thumbnailUrl}` : data.thumbnailUrl;
         setThumbnails(prev => ({
           ...prev, 
-          [timestamp]: import.meta.env.PROD 
-          ? data.thumbnailUrl  // In production, use relative URL
-          : `http://localhost:3001${data.thumbnailUrl}` // In development, use full URL
+          [timestamp]: thumbnailUrl
         }));
       }
     } catch (error) {
