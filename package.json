@@ -17,7 +17,7 @@
     "start": "cd server && npm start",
     "start:server": "npm run start --prefix server",
     "clean": "rimraf client/dist server/dist client/node_modules server/node_modules node_modules",
-    "render-build": "npm install --prefix client && npm install --prefix server && npm run build --prefix client"
+    "render-build": "npm install --prefix client --include=dev && npm install --prefix server && npm run build --prefix client"
   },
   "keywords": [
     "hebrew",
