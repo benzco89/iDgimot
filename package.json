@@ -1,0 +1,49 @@
+{
+  "name": "kan-news-content-assistant",
+  "version": "1.0.0",
+  "description": "Hebrew-language full-stack web application for generating YouTube content suggestions using Google Gemini Pro AI",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm install --prefix client && npm install --prefix server",
+    "dev:server": "npm run start --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build:client": "npm run build --prefix client",
+    "start:server": "npm run start --prefix server",
+    "clean": "rimraf client/dist server/dist client/node_modules server/node_modules node_modules"
+  },
+  "keywords": [
+    "hebrew",
+    "news",
+    "content-generation",
+    "ai",
+    "gemini-pro",
+    "youtube",
+    "video-analysis",
+    "thumbnails",
+    "react",
+    "nodejs"
+  ],
+  "author": "Kan News Content Team",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "rimraf": "^5.0.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/kan-news-content-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/kan-news-content-assistant/issues"
+  },
+  "homepage": "https://github.com/your-username/kan-news-content-assistant#readme"
+} 
