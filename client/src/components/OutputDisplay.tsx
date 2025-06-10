@@ -51,7 +51,12 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
       formData.append('video', videoFile);
       formData.append('timestamp', timestamp);
 
-      const response = await fetch('http://localhost:3001/api/extract-thumbnail', {
+      // Use environment-aware API URL
+    const apiUrl = import.meta.env.PROD 
+      ? '/api/extract-thumbnail'  // In production, use relative path
+      : 'http://localhost:3001/api/extract-thumbnail'; // In development, use localhost
+
+    const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       });
@@ -61,7 +66,9 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
       if (data.success) {
         setThumbnails(prev => ({
           ...prev, 
-          [timestamp]: `http://localhost:3001${data.thumbnailUrl}`
+          [timestamp]: import.meta.env.PROD 
+          ? data.thumbnailUrl  // In production, use relative URL
+          : `http://localhost:3001${data.thumbnailUrl}` // In development, use full URL
         }));
       }
     } catch (error) {

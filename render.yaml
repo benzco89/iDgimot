@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: kan-news-content-assistant
+    env: node
+    plan: free
+    buildCommand: npm run render-build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GEMINI_API_KEY
+        sync: false  # This will be set manually in Render dashboard
+    disk:
+      name: kan-news-content-assistant-disk
+      mountPath: /opt/render/project/src/server/uploads
+      sizeGB: 1 

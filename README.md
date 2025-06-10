@@ -205,6 +205,12 @@ Health check endpoint.
 
 ### Available Scripts
 
+**Root**:
+- `npm run dev` - Start both client and server in development
+- `npm run build` - Build client for production
+- `npm start` - Start production server
+- `npm run render-build` - Build command for Render deployment
+
 **Server**:
 - `npm start` - Start production server
 - `npm run dev` - Start development server with nodemon
@@ -268,6 +274,30 @@ This application is designed specifically for Hebrew news content creation. When
 2. Follow RTL design principles
 3. Test with Hebrew content
 4. Ensure cultural appropriateness for Israeli news context
+
+## 🚀 Deployment
+
+### Render.com (Recommended)
+
+This project is configured for easy deployment on Render.com:
+
+1. **Push to GitHub**: Ensure your code is in a GitHub repository
+2. **Connect to Render**: Link your GitHub repo to Render
+3. **Auto-deploy**: Render will detect `render.yaml` and deploy automatically
+
+**Environment Variables Required**:
+```env
+NODE_ENV=production
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+For detailed deployment instructions, see [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
+### Live Demo
+Once deployed, your app will be available at:
+```
+https://your-app-name.onrender.com
+```
 
 ## 📄 License
 

@@ -19,6 +19,11 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Serve static files from the React app (for production)
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../client/dist')));
+}
+
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -52,7 +57,7 @@ const upload = multer({
 });
 
 // Initialize Google Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
 
 // Helper function to convert file to generative part
 function fileToGenerativePart(path, mimeType) {
@@ -303,8 +308,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'השרת פועל תקין' });
 });
 
+// Catch-all handler: serve React app for any non-API routes (production only)
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`השרת פועל על פורט ${PORT}`);
   console.log('מוכן לקבל העלאות סרטונים וניתוח עם Gemini Pro');
-  console.log('API Key מוגדר:', !!process.env.GOOGLE_API_KEY);
+  console.log('API Key מוגדר:', !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
 }); 
