@@ -23,6 +23,101 @@ interface OutputDisplayProps {
   videoFile?: File;
 }
 
+// רכיב פידבק נפרד כדי למנוע re-creation
+const FeedbackComponent: React.FC<{
+  itemKey: string;
+  contentType: string;
+  contentText: string;
+  feedbackStates: {[key: string]: {
+    feedback: 'like' | 'dislike' | null;
+    showExplanation: boolean;
+    explanation: string;
+    isSubmitting: boolean;
+  }};
+  onFeedback: (key: string, contentType: string, contentText: string, feedbackType: 'like' | 'dislike') => void;
+  onExplanationChange: (key: string, explanation: string) => void;
+  onSubmitFeedback: (key: string, contentType: string, contentText: string) => void;
+  onCancelFeedback: (key: string) => void;
+}> = ({ 
+  itemKey, 
+  contentType, 
+  contentText, 
+  feedbackStates, 
+  onFeedback, 
+  onExplanationChange, 
+  onSubmitFeedback, 
+  onCancelFeedback 
+}) => {
+  const feedbackState = feedbackStates[itemKey] || {
+    feedback: null,
+    showExplanation: false,
+    explanation: '',
+    isSubmitting: false
+  };
+
+  return (
+    <div className="mt-2 border-t border-gray-200 pt-2">
+      {!feedbackState.showExplanation ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">איך זה?</span>
+          <button
+            onClick={() => onFeedback(itemKey, contentType, contentText, 'like')}
+            className="text-lg hover:bg-green-100 p-1 rounded transition-colors"
+            title="טוב"
+          >
+            👍
+          </button>
+          <button
+            onClick={() => onFeedback(itemKey, contentType, contentText, 'dislike')}
+            className="text-lg hover:bg-red-100 p-1 rounded transition-colors"
+            title="לא טוב"
+          >
+            👎
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2 bg-gray-50 p-3 rounded border">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600">
+              {feedbackState.feedback === 'like' ? '👍 למה זה טוב?' : '👎 למה זה לא טוב?'}
+            </span>
+          </div>
+          <textarea
+            key={`textarea-${itemKey}`}
+            value={feedbackState.explanation}
+            onChange={(e) => onExplanationChange(itemKey, e.target.value)}
+            placeholder="הסבר קצר (אופציונלי)..."
+            className="w-full p-2 border border-gray-300 rounded text-sm resize-none"
+            rows={2}
+            disabled={feedbackState.isSubmitting}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => onSubmitFeedback(itemKey, contentType, contentText)}
+              disabled={feedbackState.isSubmitting}
+              className={`px-3 py-1 text-xs rounded transition-colors ${
+                feedbackState.isSubmitting
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
+                  : 'bg-blue-500 text-white hover:bg-blue-600'
+              }`}
+            >
+              {feedbackState.isSubmitting ? 'שולח...' : 'שלח פידבק'}
+            </button>
+            <button
+              onClick={() => onCancelFeedback(itemKey)}
+              disabled={feedbackState.isSubmitting}
+              className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 disabled:opacity-50"
+            >
+              ביטול
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
   const [copiedText, setCopiedText] = useState<string>('');
   const [thumbnails, setThumbnails] = useState<{[key: string]: string}>({});
@@ -30,6 +125,14 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<{[key: string]: string}>({});
   const [isEditing, setIsEditing] = useState<{[key: string]: boolean}>({});
+  
+  // State לניהול פידבק
+  const [feedbackStates, setFeedbackStates] = useState<{[key: string]: {
+    feedback: 'like' | 'dislike' | null;
+    showExplanation: boolean;
+    explanation: string;
+    isSubmitting: boolean;
+  }}>({});
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -106,6 +209,97 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
     setEditingText({...editingText, [key]: ''});
   };
 
+  // פונקציות לניהול פידבק
+  const handleFeedback = (key: string, contentType: string, contentText: string, feedbackType: 'like' | 'dislike') => {
+    setFeedbackStates(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        feedback: feedbackType,
+        showExplanation: true,
+        explanation: prev[key]?.explanation || '',
+        isSubmitting: false
+      }
+    }));
+  };
+
+  const handleExplanationChange = (key: string, explanation: string) => {
+    setFeedbackStates(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        explanation
+      }
+    }));
+  };
+
+  const submitFeedback = async (key: string, contentType: string, contentText: string) => {
+    const feedbackState = feedbackStates[key];
+    if (!feedbackState?.feedback) return;
+
+    setFeedbackStates(prev => ({
+      ...prev,
+      [key]: { ...prev[key], isSubmitting: true }
+    }));
+
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/feedback` : '/api/feedback';
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contentType,
+          contentText,
+          feedback: feedbackState.feedback,
+          explanation: feedbackState.explanation,
+          reporter: result.reporterName,
+          videoDate: result.videoDate
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('שגיאה בשליחת פידבק');
+      }
+
+      // Success - hide the explanation form
+      setFeedbackStates(prev => ({
+        ...prev,
+        [key]: {
+          ...prev[key],
+          showExplanation: false,
+          isSubmitting: false
+        }
+      }));
+
+      console.log('✅ פידבק נשלח בהצלחה');
+
+    } catch (error) {
+      console.error('❌ שגיאה בשליחת פידבק:', error);
+      setFeedbackStates(prev => ({
+        ...prev,
+        [key]: { ...prev[key], isSubmitting: false }
+      }));
+    }
+  };
+
+  const cancelFeedback = (key: string) => {
+    setFeedbackStates(prev => ({
+      ...prev,
+      [key]: {
+        feedback: null,
+        showExplanation: false,
+        explanation: '',
+        isSubmitting: false
+      }
+    }));
+  };
+
+
+
   const renderStructuredContent = (content: ContentData) => {
     if (content.rawContent) {
       // Fallback for non-JSON content
@@ -162,26 +356,38 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-start justify-between">
-                        <p className="text-gray-700 flex-1">{index + 1}. {title}</p>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => startEditing(key, title)}
-                            className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                          >
-                            ערוך
-                          </button>
-                          <button
-                            onClick={() => copyToClipboard(title)}
-                            className={`px-3 py-1 text-xs rounded transition-colors ${
-                              copiedText === title 
-                                ? 'bg-green-500 text-white' 
-                                : 'bg-blue-500 text-white hover:bg-blue-600'
-                            }`}
-                          >
-                            {copiedText === title ? 'הועתק!' : 'העתק'}
-                          </button>
+                      <div>
+                        <div className="flex items-start justify-between">
+                          <p className="text-gray-700 flex-1">{index + 1}. {title}</p>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => startEditing(key, title)}
+                              className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                            >
+                              ערוך
+                            </button>
+                            <button
+                              onClick={() => copyToClipboard(title)}
+                              className={`px-3 py-1 text-xs rounded transition-colors ${
+                                copiedText === title 
+                                  ? 'bg-green-500 text-white' 
+                                  : 'bg-blue-500 text-white hover:bg-blue-600'
+                              }`}
+                            >
+                              {copiedText === title ? 'הועתק!' : 'העתק'}
+                            </button>
+                          </div>
                         </div>
+                        <FeedbackComponent 
+                          itemKey={key}
+                          contentType="title"
+                          contentText={title}
+                          feedbackStates={feedbackStates}
+                          onFeedback={handleFeedback}
+                          onExplanationChange={handleExplanationChange}
+                          onSubmitFeedback={submitFeedback}
+                          onCancelFeedback={cancelFeedback}
+                        />
                       </div>
                     )}
                   </div>
@@ -224,26 +430,38 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="text-gray-700 flex-1">{description}</p>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => startEditing(key, description)}
-                            className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                          >
-                            ערוך
-                          </button>
-                          <button
-                            onClick={() => copyToClipboard(description)}
-                            className={`px-3 py-1 text-xs rounded transition-colors ${
-                              copiedText === description 
-                                ? 'bg-green-500 text-white' 
-                                : 'bg-blue-500 text-white hover:bg-blue-600'
-                            }`}
-                          >
-                            {copiedText === description ? 'הועתק!' : 'העתק'}
-                          </button>
+                      <div>
+                        <div className="flex items-start justify-between mb-2">
+                          <p className="text-gray-700 flex-1">{description}</p>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => startEditing(key, description)}
+                              className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                            >
+                              ערוך
+                            </button>
+                            <button
+                              onClick={() => copyToClipboard(description)}
+                              className={`px-3 py-1 text-xs rounded transition-colors ${
+                                copiedText === description 
+                                  ? 'bg-green-500 text-white' 
+                                  : 'bg-blue-500 text-white hover:bg-blue-600'
+                              }`}
+                            >
+                              {copiedText === description ? 'הועתק!' : 'העתק'}
+                            </button>
+                          </div>
                         </div>
+                        <FeedbackComponent 
+                          itemKey={key}
+                          contentType="description"
+                          contentText={description}
+                          feedbackStates={feedbackStates}
+                          onFeedback={handleFeedback}
+                          onExplanationChange={handleExplanationChange}
+                          onSubmitFeedback={submitFeedback}
+                          onCancelFeedback={cancelFeedback}
+                        />
                       </div>
                     )}
                   </div>
@@ -260,21 +478,33 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
             <div className="space-y-4">
               {content.thumbnails.map((thumbnail, index) => (
                 <div key={index} className="bg-gray-50 p-4 rounded">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="text-gray-700 font-medium">טיימקוד: {thumbnail.timestamp}</p>
-                      <p className="text-gray-600 text-sm">{thumbnail.description}</p>
+                  <div>
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="text-gray-700 font-medium">טיימקוד: {thumbnail.timestamp}</p>
+                        <p className="text-gray-600 text-sm">{thumbnail.description}</p>
+                      </div>
+                      <button
+                        onClick={() => copyToClipboard(`${thumbnail.timestamp} - ${thumbnail.description}`)}
+                        className={`mr-2 px-3 py-1 text-xs rounded transition-colors ${
+                          copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` 
+                            ? 'bg-green-500 text-white' 
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
+                      >
+                        {copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` ? 'הועתק!' : 'העתק'}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => copyToClipboard(`${thumbnail.timestamp} - ${thumbnail.description}`)}
-                      className={`mr-2 px-3 py-1 text-xs rounded transition-colors ${
-                        copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` 
-                          ? 'bg-green-500 text-white' 
-                          : 'bg-blue-500 text-white hover:bg-blue-600'
-                      }`}
-                    >
-                      {copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` ? 'הועתק!' : 'העתק'}
-                    </button>
+                    <FeedbackComponent 
+                      itemKey={`thumbnail-${index}`}
+                      contentType="thumbnail"
+                      contentText={`${thumbnail.timestamp} - ${thumbnail.description}`}
+                      feedbackStates={feedbackStates}
+                      onFeedback={handleFeedback}
+                      onExplanationChange={handleExplanationChange}
+                      onSubmitFeedback={submitFeedback}
+                      onCancelFeedback={cancelFeedback}
+                    />
                   </div>
                   
                   {/* Thumbnail extraction */}

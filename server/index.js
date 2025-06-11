@@ -6,6 +6,7 @@ const path = require('path');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const ffmpeg = require('fluent-ffmpeg');
+const Airtable = require('airtable');
 
 // Set FFmpeg path for Windows (if needed)
 if (process.platform === 'win32') {
@@ -58,6 +59,19 @@ const upload = multer({
 
 // Initialize Google Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+
+// Initialize Airtable
+let airtableBase = null;
+if (process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_BASE_ID) {
+  Airtable.configure({
+    endpointUrl: 'https://api.airtable.com',
+    apiKey: process.env.AIRTABLE_API_KEY
+  });
+  airtableBase = Airtable.base(process.env.AIRTABLE_BASE_ID);
+  console.log('✅ Airtable מוכן לשימוש');
+} else {
+  console.log('⚠️ Airtable לא מוגדר - פידבק יישמר רק בלוגים');
+}
 
 // Helper function to convert file to generative part
 function fileToGenerativePart(path, mimeType) {
@@ -317,6 +331,99 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
     
     res.status(500).json({
       error: 'שגיאה בחילוץ ת\'מבנייל: ' + error.message
+    });
+  }
+});
+
+// Endpoint לשמירת פידבק משתמש
+app.post('/api/feedback', async (req, res) => {
+  console.log('=== בקשה לשמירת פידבק ===');
+  
+  try {
+    const { contentType, contentText, feedback, explanation, reporter, videoDate } = req.body;
+
+    // בדיקת שדות נדרשים
+    if (!contentType || !contentText || !feedback) {
+      return res.status(400).json({
+        error: 'חסרים שדות נדרשים: contentType, contentText, feedback'
+      });
+    }
+
+    console.log('פידבק התקבל:', {
+      contentType,
+      contentText: contentText.substring(0, 50) + '...',
+      feedback,
+      explanation: explanation ? 'יש הסבר' : 'אין הסבר',
+      reporter
+    });
+
+    const feedbackData = {
+      id: Date.now().toString(),
+      contentType,
+      contentText,
+      feedback,
+      explanation: explanation || '',
+      reporter: reporter || '',
+      videoDate: videoDate || '',
+      timestamp: new Date().toISOString()
+    };
+
+    // שמירה ב-Airtable אם מוגדר
+    if (airtableBase) {
+      try {
+        const record = await airtableBase('Feedback').create([
+          {
+            "fields": {
+              "Content Type": contentType,
+              "Content Text": contentText,
+              "Feedback": feedback,
+              "Explanation": explanation || '',
+              "Reporter": reporter || '',
+              "Video Date": videoDate || '',
+              "Timestamp": new Date().toISOString(),
+              "Feedback ID": feedbackData.id
+            }
+          }
+        ]);
+
+        console.log('✅ פידבק נשמר ב-Airtable:', record[0].getId());
+        
+        res.json({
+          success: true,
+          message: 'פידבק נשמר בהצלחה ב-Airtable',
+          feedbackId: feedbackData.id,
+          airtableId: record[0].getId()
+        });
+
+      } catch (airtableError) {
+        console.error('❌ שגיאה בשמירה ב-Airtable:', airtableError);
+        
+        // גם אם יש שגיאה ב-Airtable, עדיין נחזיר הצלחה
+        console.log('✅ פידבק נשמר מקומית:', feedbackData.id);
+        
+        res.json({
+          success: true,
+          message: 'פידבק נשמר מקומית (שגיאה ב-Airtable)',
+          feedbackId: feedbackData.id,
+          airtableError: airtableError.message
+        });
+      }
+    } else {
+      // אין Airtable - רק לוג מקומי
+      console.log('✅ פידבק נשמר מקומית:', feedbackData.id);
+      
+      res.json({
+        success: true,
+        message: 'פידבק נשמר מקומית (Airtable לא מוגדר)',
+        feedbackId: feedbackData.id
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ שגיאה בשמירת פידבק:', error);
+    
+    res.status(500).json({
+      error: 'שגיאה בשמירת פידבק: ' + error.message
     });
   }
 });

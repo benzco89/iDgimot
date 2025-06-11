@@ -15,6 +15,8 @@ A Hebrew-language full-stack web application that generates YouTube content sugg
 - **Intelligent Thumbnail Extraction**: Automatically extracts high-quality (HD 1080p) video frames at AI-suggested timestamps
 - **Hebrew RTL Interface**: Fully localized Hebrew interface with proper right-to-left text support
 - **Interactive Content Editing**: Edit titles and descriptions with inline editing capabilities
+- **User Feedback System**: Like/dislike feedback for generated content with explanations
+- **Airtable Integration**: Optional feedback storage for continuous improvement
 - **Progress Tracking**: Real-time progress bar showing upload, processing, and completion stages
 - **Video Preview**: Preview uploaded videos before processing
 
@@ -94,7 +96,14 @@ Create a `.env` file in the `server` directory:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 PORT=3001
+
+# Optional: For feedback storage
+AIRTABLE_API_KEY=your_airtable_api_key_here
+AIRTABLE_BASE_ID=your_airtable_base_id_here
 ```
+
+5. **Optional: Set up Airtable for feedback storage**:
+See [AIRTABLE_SETUP.md](AIRTABLE_SETUP.md) for detailed instructions.
 
 ### Running the Application
 
@@ -163,6 +172,31 @@ Extracts video frame at specific timestamp.
 
 ### GET `/api/thumbnails/:filename`
 Serves generated thumbnail images.
+
+### POST `/api/feedback`
+Saves user feedback for generated content.
+
+**Request**: JSON
+```json
+{
+  "contentType": "title|description|thumbnail",
+  "contentText": "The actual content text",
+  "feedback": "like|dislike",
+  "explanation": "Optional user explanation",
+  "reporter": "Reporter name",
+  "videoDate": "Video date"
+}
+```
+
+**Response**: JSON
+```json
+{
+  "success": true,
+  "message": "פידבק נשמר בהצלחה ב-Airtable",
+  "feedbackId": "1234567890",
+  "airtableId": "recXXXXXXXXXXXXXX"
+}
+```
 
 ### GET `/api/health`
 Health check endpoint.
