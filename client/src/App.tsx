@@ -7,11 +7,23 @@ interface FormData {
   video: File | null
   reporterName: string
   videoDate: string
+  selectedModel: string
+}
+
+interface ContentData {
+  summary?: string;
+  titles?: string[];
+  descriptions?: string[];
+  thumbnails?: Array<{
+    timestamp: string;
+    description: string;
+  }>;
+  rawContent?: string;
 }
 
 interface ApiResponse {
   success: boolean
-  content: string
+  content: ContentData
   reporterName: string
   videoDate: string
 }
@@ -43,6 +55,7 @@ function App() {
       }
       submitData.append('reporterName', formData.reporterName)
       submitData.append('videoDate', formData.videoDate)
+      submitData.append('selectedModel', formData.selectedModel)
 
       // Stage 2: Uploading
       setProgress({ stage: 'upload', percentage: 30, message: 'מעלה קובץ לשרת...' })
@@ -57,7 +70,7 @@ function App() {
       })
 
       // Stage 3: Processing
-      setProgress({ stage: 'processing', percentage: 60, message: 'מנתח סרטון עם Gemini Pro...' })
+      setProgress({ stage: 'processing', percentage: 60, message: `מנתח סרטון עם ${formData.selectedModel}...` })
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -96,7 +109,7 @@ function App() {
             עוזר התוכן של כאן חדשות
           </h1>
           <p className="text-gray-600">
-            מנתח סרטונים ומייצר הצעות תוכן מותאמות לערוץ היוטיוב עם Gemini Pro
+            מנתח סרטונים ומייצר הצעות תוכן מותאמות לערוץ היוטיוב עם מודלי Gemini החדשים
           </p>
         </header>
 
@@ -114,7 +127,7 @@ function App() {
           
           {/* Results - 3 columns */}
           <div className="lg:col-span-3">
-            {result && <OutputDisplay result={result} videoFile={currentVideoFile} />}
+            {result && <OutputDisplay result={result} videoFile={currentVideoFile || undefined} />}
           </div>
         </div>
       </div>

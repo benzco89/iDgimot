@@ -19,6 +19,12 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
+    }
   },
   esbuild: {
     logOverride: { 'this-is-undefined-in-esm': 'silent' }

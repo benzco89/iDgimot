@@ -107,7 +107,7 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
   });
 }
 
-// Helper function to parse timestamp (MM:SS.XXX) to seconds
+// Helper function to parse timestamp (MM:SS or MM:SS.XXX) to seconds
 function parseTimestamp(timestamp) {
   const parts = timestamp.split(':');
   if (parts.length === 2) {
@@ -138,11 +138,12 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
   } : 'לא התקבל קובץ');
   
   try {
-    const { reporterName, videoDate } = req.body;
+    const { reporterName, videoDate, selectedModel } = req.body;
     
     console.log('נתונים שחולצו:');
     console.log('- reporterName:', reporterName);
     console.log('- videoDate:', videoDate);
+    console.log('- selectedModel:', selectedModel);
     console.log('- videoFile exists:', !!req.file);
 
     const videoFile = req.file;
@@ -162,8 +163,77 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     console.log('✅ כל השדות התקבלו בהצלחה');
     console.log('מתחיל לעבד קובץ:', videoFile.filename);
 
+    // Available models with their characteristics
+    const availableModels = {
+      'gemini-2.5-pro': {
+        name: 'Gemini 2.5 Pro',
+        description: 'המודל החזק ביותר - מיועד לניתוח מורכב',
+        speed: 'איטי',
+        quality: 'מקסימלי',
+        cost: 'גבוה'
+      },
+      'gemini-2.5-flash': {
+        name: 'Gemini 2.5 Flash', 
+        description: 'מאוזן - מהיר ויעיל',
+        speed: 'מהיר',
+        quality: 'גבוה',
+        cost: 'בינוני'
+      },
+      'gemini-2.5-flash-lite-preview-06-17': {
+        name: 'Gemini 2.5 Flash Lite',
+        description: 'הכי מהיר וחסכוני',
+        speed: 'מהיר מאוד',
+        quality: 'טוב',
+        cost: 'נמוך'
+      }
+    };
+
+    // Select model - default to Pro if not specified
+    const modelToUse = selectedModel && availableModels[selectedModel] 
+      ? selectedModel 
+      : 'gemini-2.5-pro';
+
+    console.log('🤖 מודל נבחר:', availableModels[modelToUse].name);
+    console.log('📊 מאפיינים:', availableModels[modelToUse]);
+
+    // הגדרת סכמת JSON מובנית למודל
+    const responseSchema = {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          description: "תקציר התוכן החדשותי של הכתבה ב-2-3 משפטים - מה הסיפור העיקרי?"
+        },
+        titles: {
+          type: "array",
+          items: { type: "string" },
+          description: "3 כותרות יוטיוב מושכות ומעניינות לסרטון"
+        },
+        descriptions: {
+          type: "array", 
+          items: { type: "string" },
+          description: "2-3 תיאורים לסרטון עם קריאה לפעולה, כולל שם הכתב ותאריך"
+        },
+        thumbnails: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              timestamp: { type: "string", description: "זמן בפורמט MM:SS.XXX (למשל: 02:15.750)" },
+              description: { type: "string", description: "תיאור ויזואלי מפורט של הפריים - מה רואים, איך זה נראה, למה זה מושך עין" }
+            },
+            required: ["timestamp", "description"]
+          },
+          description: "2-3 רגעים ויזואליים מעניינים לתמונות ת'מבנייל"
+        }
+      },
+      required: ["summary", "titles", "descriptions", "thumbnails"]
+    };
+
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro-preview-06-05" });
+    const model = genAI.getGenerativeModel({ 
+      model: modelToUse
+    });
     console.log('✅ מודל Gemini אותחל בהצלחה');
 
     // Convert the uploaded video to the format needed by Gemini
@@ -172,10 +242,16 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     console.log('✅ קובץ וידאו הוכן בהצלחה');
 
     // בניית הפרומפט עם הוראות לניתוח הסרטון
-    const prompt = `אתה עורך דיגיטל מומחה המתמחה בערוץ היוטיוב של "כאן חדשות". משימתך היא לנתח את תוכן הכתבה שתסופק לך ולצור הצעות תוכן מותאמות.
+    const prompt = `אתה עורך דיגיטלי מומחה המתמחה בערוץ היוטיוב של "כאן חדשות". משימתך היא לנתח את תוכן הכתבה שתסופק לך ולצור הצעות תוכן מותאמות.
 
 שם הכתב/ת: ${reporterName}
 תאריך שידור: ${videoDate}
+
+הוראות חשובות:
+- אל תתרגם טקסט שמופיע על המסך
+- אל תתאר מה כתוב בסרטון  
+- התמקד בתוכן החדשותי והמסר העיקרי
+- נתח את האירועים והעובדות, לא את הטקסט הגרפי
 
 ### שלב 1: ניתוח הסרטון
 נתח את הסרטון ופרק את התוכן לרכיבים מרכזיים.
@@ -183,68 +259,128 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
 ### שלב 2: הצעות לערוץ היוטיוב
 
 #### ✍️ הצעות לכותרת (3 אפשרויות)
-הכלל: כותרת ראשית המתארת את האירוע, שיכולה לכלול הקשר מעניין, פרט מסקרן, שאלה מושכת, ציטוט וסגנון חדשותי וישיר.
+הכלל: כותרת ראשית המתארת את האירוע, שיכולה לכלול הקשר מעניין, פרט מסקרן, שאלה מושכת, ציטוט וסגנון חדשותי וישיר. אפשר ליצור משחקי מילים או טרנדים
 
-#### 📄 הצעות לתיאור (2 אפשרויות)  
+#### 📄 הצעות לתיאור (3 אפשרויות)  
 הכלל: פסקה המסכמת את עיקרי הכתבה (1-3 משפטים) ומשפט חתימה סטנדרטי מותאם מגדרית.
 
-#### 🖼️ הצעות לת'מבנייל (2 אפשרויות)
+#### 🖼️ הצעות לת'מבנייל (2-3 אפשרויות)
 הכלל: טיימקוד מדויק לפריים ויזואלי חזק, אותנטי ודרמטי. ללא דמות הכתב/ת או טקסט. חפש רגעים עם אקשן, רגש, או אלמנטים ויזואליים בולטים.
 
-החזר את התשובה בפורמט JSON המדויק הזה:
-
-{
-  "summary": "תקציר קצר ובהיר של הכתבה ב-2-3 משפטים",
-  "titles": [
-    "כותרת חדשותית ישירה המתארת את האירוע המרכזי",
-    "כותרת עם זווית מעניינת או הקשר רחב יותר", 
-    "כותרת עם אלמנט של סקרנות, שאלה או ציטוט"
-  ],
-  "descriptions": [
-    "תיאור קצר המסכם את עיקרי הכתבה. כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.",
-    "תיאור אחר עם זווית שונה של הכתבה. כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}."
-  ],
-  "thumbnails": [
-    {
-      "timestamp": "MM:SS.XXX",
-      "description": "תיאור ויזואלי מפורט של הפריים - מה רואים, איך זה נראה, למה זה מושך עין"
-    },
-    {
-      "timestamp": "MM:SS.XXX", 
-      "description": "תיאור ויזואלי מפורט של פריים נוסף עם אלמנט ויזואלי חזק או רגשי"
-    }
-  ]
-}
+פורמט הת'מבנייל:
+"thumbnails": [
+  {
+    "timestamp": "MM:SS.XXX",
+    "description": "תיאור ויזואלי מפורט של הפריים - מה רואים, איך זה נראה, למה זה מושך עין"
+  },
+  {
+    "timestamp": "MM:SS.XXX", 
+    "description": "תיאור ויזואלי מפורט של פריים נוסף עם אלמנט ויזואלי חזק או רגשי"
+  }
+]
 
 הערות חשובות:
 - טיימקוד חייב להיות מדויק בפורמט MM:SS.XXX (למשל: 02:15.750)
 - לת'מבנייל: חפש פריימים ללא דמות הכתב/ת, עם אקשן או רגש חזק
 - לכותרות: השתמש בשפה חדשותית ישירה ומושכת
-- לתיאורים: תמיד סיים עם המשפט הסטנדרטי כולל שם הכתב והתאריך`;
+- לתיאורים: תמיד סיים עם המשפט הסטנדרטי כולל שם הכתב והתאריך
+- התמקד בתוכן החדשותי בלבד, לא בתרגום טקסט
 
-    console.log('שולח בקשה למודל Gemini...');
-    // Generate content with video analysis
-    const result = await model.generateContent([prompt, videoPart]);
-    console.log('✅ תשובה התקבלה מהמודל');
+התשובה חייבת להיות בעברית בלבד.`;
+
+    console.log('שולח בקשה למודל Gemini עם JSON Schema...');
     
-    const response = await result.response;
-    const generatedContent = response.text();
-    console.log('✅ תוכן נוצר בהצלחה, אורך:', generatedContent.length, 'תווים');
-
-    // נסה לפרסר את התוכן כ-JSON
     let parsedContent;
-    try {
-      // מחפש JSON בתוך התוכן (במקרה שיש טקסט נוסף)
-      const jsonMatch = generatedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedContent = JSON.parse(jsonMatch[0]);
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    // נסה עד 3 פעמים לקבל JSON תקין
+    while (attempts < maxAttempts) {
+      attempts++;
+      console.log(`🔄 ניסיון ${attempts}/${maxAttempts}`);
+      
+      try {
+        const result = await model.generateContent({
+          contents: [{ parts: [{ text: prompt }, videoPart] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: responseSchema,
+            temperature: 0.7,
+            maxOutputTokens: 4096
+          }
+        });
+        
+        const response = await result.response;
+        let generatedContent = response.text();
+        console.log('✅ תשובה התקבלה מהמודל, אורך:', generatedContent.length, 'תווים');
+        
+        // אם זה thinking model, חפש את ה-JSON האחרון בתוכן
+        if (generatedContent.includes('```json') || generatedContent.includes('{')) {
+          console.log('🧠 זוהה thinking model - מחפש JSON סופי...');
+          
+          // חפש את כל בלוקי ה-JSON בתוכן
+          const jsonBlocks = [];
+          
+          // חפש JSON בתוך ```json blocks
+          const jsonCodeBlocks = generatedContent.match(/```json\s*([\s\S]*?)\s*```/g);
+          if (jsonCodeBlocks) {
+            jsonCodeBlocks.forEach(block => {
+              const jsonContent = block.replace(/```json\s*|\s*```/g, '').trim();
+              if (jsonContent.startsWith('{')) {
+                jsonBlocks.push(jsonContent);
+              }
+            });
+          }
+          
+          // חפש JSON ישירות (שמתחיל ב-{ ומסתיים ב-})
+          const jsonMatches = generatedContent.match(/\{[\s\S]*?\}(?=\s*$|\s*\n\s*$)/g);
+          if (jsonMatches) {
+            jsonMatches.forEach(match => {
+              if (match.includes('"summary"') || match.includes('"titles"')) {
+                jsonBlocks.push(match.trim());
+              }
+            });
+          }
+          
+          // קח את ה-JSON האחרון שנמצא
+          if (jsonBlocks.length > 0) {
+            generatedContent = jsonBlocks[jsonBlocks.length - 1];
+            console.log('✅ נמצא JSON סופי, אורך:', generatedContent.length, 'תווים');
+          }
+        }
+        
+        // פרסור ה-JSON
+        parsedContent = JSON.parse(generatedContent);
         console.log('✅ JSON פורסר בהצלחה');
-      } else {
-        throw new Error('לא נמצא JSON בתשובה');
+        console.log('📊 מבנה התוכן:', {
+          summary: !!parsedContent.summary,
+          titles: parsedContent.titles?.length || 0,
+          descriptions: parsedContent.descriptions?.length || 0,
+          thumbnails: parsedContent.thumbnails?.length || 0
+        });
+        break;
+        
+      } catch (error) {
+        console.error(`❌ שגיאה בניסיון ${attempts}:`, error.message);
+        if (attempts === maxAttempts) {
+          // אם כל הניסיונות נכשלו, החזר תוכן בסיסי
+          parsedContent = { 
+            summary: "שגיאה בניתוח הסרטון - נסה שוב",
+            titles: ["כתבה של " + reporterName, "חדשות מ-" + videoDate, "עדכון חדשותי"],
+            descriptions: [
+              `כתבתו של ${reporterName}, כאן חדשות ${videoDate}.`,
+              `עדכון חדשותי מאת ${reporterName} - ${videoDate}.`
+            ],
+            thumbnails: [
+              {"timestamp": "00:10", "description": "פתיחת הכתבה"},
+              {"timestamp": "00:30", "description": "רגע מרכזי בכתבה"}
+            ]
+          };
+          break;
+        }
+        // חכה קצת לפני ניסיון נוסף
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    } catch (parseError) {
-      console.log('⚠️ לא ניתן לפרסר כ-JSON, משלח כטקסט רגיל');
-      parsedContent = { rawContent: generatedContent };
     }
 
     // Clean up uploaded file after processing
@@ -260,7 +396,9 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       processing: {
         videoSize: formatFileSize(videoFile.size),
         processingTime: Date.now() - Date.parse(new Date()),
-        modelUsed: "gemini-2.5-pro-preview-06-05"
+        modelUsed: modelToUse,
+        modelName: availableModels[modelToUse].name,
+        modelCharacteristics: availableModels[modelToUse]
       }
     });
     console.log('=== בקשה הושלמה בהצלחה ===');
@@ -426,6 +564,43 @@ app.post('/api/feedback', async (req, res) => {
       error: 'שגיאה בשמירת פידבק: ' + error.message
     });
   }
+});
+
+// Endpoint לקבלת רשימת המודלים הזמינים
+app.get('/api/models', (req, res) => {
+  const availableModels = {
+    'gemini-2.5-pro': {
+      name: 'Gemini 2.5 Pro',
+      description: 'המודל החזק ביותר - מיועד לניתוח מורכב',
+      speed: 'איטי',
+      quality: 'מקסימלי',
+      cost: 'גבוה',
+      recommended: 'לכתבות מורכבות ומפורטות (ברירת מחדל)',
+      default: true
+    },
+    'gemini-2.5-flash': {
+      name: 'Gemini 2.5 Flash', 
+      description: 'מאוזן - מהיר ויעיל',
+      speed: 'מהיר',
+      quality: 'גבוה',
+      cost: 'בינוני',
+      recommended: 'למרבית הכתבות'
+    },
+    'gemini-2.5-flash-lite-preview-06-17': {
+      name: 'Gemini 2.5 Flash Lite',
+      description: 'הכי מהיר וחסכוני',
+      speed: 'מהיר מאוד',
+      quality: 'טוב',
+      cost: 'נמוך',
+      recommended: 'לעיבוד מהיר בכמויות גדולות'
+    }
+  };
+
+  res.json({
+    success: true,
+    models: availableModels,
+    defaultModel: 'gemini-2.5-pro'
+  });
 });
 
 // Health check endpoint

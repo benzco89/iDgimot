@@ -48,5 +48,8 @@
   "bugs": {
     "url": "https://github.com/your-username/kan-news-content-assistant/issues"
   },
-  "homepage": "https://github.com/your-username/kan-news-content-assistant#readme"
-} 
+  "homepage": "https://github.com/your-username/kan-news-content-assistant#readme",
+  "dependencies": {
+    "@google/genai": "^1.6.0"
+  }
+}

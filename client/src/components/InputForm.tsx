@@ -1,9 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+interface Model {
+  name: string;
+  description: string;
+  speed: string;
+  quality: string;
+  cost: string;
+  recommended: string;
+  default?: boolean;
+}
 
 interface FormData {
   video: File | null;
   reporterName: string;
   videoDate: string;
+  selectedModel: string;
 }
 
 interface InputFormProps {
@@ -22,8 +33,55 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
   const [formData, setFormData] = useState<FormData>({
     video: null,
     reporterName: '',
-    videoDate: ''
+    videoDate: '',
+    selectedModel: '' // Will be set by server response
   });
+  
+  const [availableModels, setAvailableModels] = useState<Record<string, Model>>({});
+  const [modelsLoading, setModelsLoading] = useState(true);
+
+  // Fetch available models on component mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        console.log('🔄 מנסה לטעון מודלים מ-/api/models');
+        const response = await fetch('/api/models');
+        console.log('📡 תשובה התקבלה:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const responseText = await response.text();
+        console.log('📄 תוכן התשובה הגולמי:', responseText);
+        
+        const data = JSON.parse(responseText);
+        console.log('✅ נתוני מודלים:', data);
+        
+        if (data.success) {
+          setAvailableModels(data.models);
+          console.log('✅ מודלים נטענו:', Object.keys(data.models));
+          // Always set the default model from server
+          if (data.defaultModel) {
+            setFormData(prev => ({ ...prev, selectedModel: data.defaultModel }));
+            console.log('✅ מודל ברירת מחדל נבחר:', data.defaultModel);
+          }
+        } else {
+          console.error('❌ שגיאה בתשובה:', data);
+        }
+      } catch (error) {
+        console.error('❌ שגיאה בטעינת מודלים:', error);
+        // Fallback to Pro if server is not available
+        setFormData(prev => ({ ...prev, selectedModel: 'gemini-2.5-pro' }));
+        console.log('⚠️ נקבע fallback למודל Pro');
+      } finally {
+        setModelsLoading(false);
+        console.log('✅ טעינת מודלים הושלמה');
+      }
+    };
+
+    fetchModels();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +90,7 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
@@ -158,6 +216,60 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
               required
             />
           </div>
+        </div>
+
+        {/* Model Selection */}
+        <div>
+          <label htmlFor="selectedModel" className="block text-sm font-medium text-gray-700 mb-2">
+            בחירת מודל AI לניתוח
+          </label>
+          {modelsLoading ? (
+            <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
+              טוען מודלים זמינים...
+            </div>
+          ) : Object.keys(availableModels).length === 0 ? (
+            <div className="w-full px-3 py-2 border border-red-300 rounded-md bg-red-50 text-red-600">
+              שגיאה: לא נמצאו מודלים זמינים
+            </div>
+          ) : (
+            <select
+              id="selectedModel"
+              name="selectedModel"
+              value={formData.selectedModel}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {Object.entries(availableModels).map(([modelKey, model]) => (
+                <option key={modelKey} value={modelKey}>
+                  {model.name} - {model.description}
+                </option>
+              ))}
+            </select>
+          )}
+          
+          {/* Model Details */}
+          {formData.selectedModel && availableModels[formData.selectedModel] && (
+            <div className="mt-3 p-3 bg-gray-50 rounded-md border">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">מהירות:</span>
+                  <div className="text-gray-600">{availableModels[formData.selectedModel].speed}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">איכות:</span>
+                  <div className="text-gray-600">{availableModels[formData.selectedModel].quality}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">עלות:</span>
+                  <div className="text-gray-600">{availableModels[formData.selectedModel].cost}</div>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">מומלץ:</span>
+                  <div className="text-gray-600">{availableModels[formData.selectedModel].recommended}</div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (

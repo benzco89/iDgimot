@@ -16,6 +16,19 @@ interface ApiResponse {
   content: ContentData;
   reporterName: string;
   videoDate: string;
+  processing?: {
+    videoSize: string;
+    processingTime: number;
+    modelUsed: string;
+    modelName: string;
+    modelCharacteristics: {
+      name: string;
+      description: string;
+      speed: string;
+      quality: string;
+      cost: string;
+    };
+  };
 }
 
 interface OutputDisplayProps {
@@ -357,26 +370,26 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                       </div>
                     ) : (
                       <div>
-                        <div className="flex items-start justify-between">
-                          <p className="text-gray-700 flex-1">{index + 1}. {title}</p>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => startEditing(key, title)}
-                              className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                            >
-                              ערוך
-                            </button>
-                            <button
-                              onClick={() => copyToClipboard(title)}
-                              className={`px-3 py-1 text-xs rounded transition-colors ${
-                                copiedText === title 
-                                  ? 'bg-green-500 text-white' 
-                                  : 'bg-blue-500 text-white hover:bg-blue-600'
-                              }`}
-                            >
-                              {copiedText === title ? 'הועתק!' : 'העתק'}
-                            </button>
-                          </div>
+                      <div className="flex items-start justify-between">
+                        <p className="text-gray-700 flex-1">{index + 1}. {title}</p>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => startEditing(key, title)}
+                            className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                          >
+                            ערוך
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(title)}
+                            className={`px-3 py-1 text-xs rounded transition-colors ${
+                              copiedText === title 
+                                ? 'bg-green-500 text-white' 
+                                : 'bg-blue-500 text-white hover:bg-blue-600'
+                            }`}
+                          >
+                            {copiedText === title ? 'הועתק!' : 'העתק'}
+                          </button>
+                        </div>
                         </div>
                         <FeedbackComponent 
                           itemKey={key}
@@ -431,26 +444,26 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                       </div>
                     ) : (
                       <div>
-                        <div className="flex items-start justify-between mb-2">
-                          <p className="text-gray-700 flex-1">{description}</p>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => startEditing(key, description)}
-                              className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
-                            >
-                              ערוך
-                            </button>
-                            <button
-                              onClick={() => copyToClipboard(description)}
-                              className={`px-3 py-1 text-xs rounded transition-colors ${
-                                copiedText === description 
-                                  ? 'bg-green-500 text-white' 
-                                  : 'bg-blue-500 text-white hover:bg-blue-600'
-                              }`}
-                            >
-                              {copiedText === description ? 'הועתק!' : 'העתק'}
-                            </button>
-                          </div>
+                      <div className="flex items-start justify-between mb-2">
+                        <p className="text-gray-700 flex-1">{description}</p>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => startEditing(key, description)}
+                            className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                          >
+                            ערוך
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(description)}
+                            className={`px-3 py-1 text-xs rounded transition-colors ${
+                              copiedText === description 
+                                ? 'bg-green-500 text-white' 
+                                : 'bg-blue-500 text-white hover:bg-blue-600'
+                            }`}
+                          >
+                            {copiedText === description ? 'הועתק!' : 'העתק'}
+                          </button>
+                        </div>
                         </div>
                         <FeedbackComponent 
                           itemKey={key}
@@ -479,21 +492,21 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
               {content.thumbnails.map((thumbnail, index) => (
                 <div key={index} className="bg-gray-50 p-4 rounded">
                   <div>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="text-gray-700 font-medium">טיימקוד: {thumbnail.timestamp}</p>
-                        <p className="text-gray-600 text-sm">{thumbnail.description}</p>
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(`${thumbnail.timestamp} - ${thumbnail.description}`)}
-                        className={`mr-2 px-3 py-1 text-xs rounded transition-colors ${
-                          copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` 
-                            ? 'bg-green-500 text-white' 
-                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                        }`}
-                      >
-                        {copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` ? 'הועתק!' : 'העתק'}
-                      </button>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-gray-700 font-medium">טיימקוד: {thumbnail.timestamp}</p>
+                      <p className="text-gray-600 text-sm">{thumbnail.description}</p>
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(`${thumbnail.timestamp} - ${thumbnail.description}`)}
+                      className={`mr-2 px-3 py-1 text-xs rounded transition-colors ${
+                        copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` 
+                          ? 'bg-green-500 text-white' 
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                      }`}
+                    >
+                      {copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` ? 'הועתק!' : 'העתק'}
+                    </button>
                     </div>
                     <FeedbackComponent 
                       itemKey={`thumbnail-${index}`}
@@ -564,9 +577,33 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
       <div className="bg-white rounded-lg shadow-md p-6">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">תוצאות מומלצות</h2>
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 space-y-1">
           <p><strong>כתב/ת:</strong> {result.reporterName}</p>
           <p><strong>תאריך:</strong> {result.videoDate}</p>
+          {result.processing && (
+            <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <strong className="text-blue-800">מודל שנבחר:</strong>
+                  <div className="text-blue-700">{result.processing.modelName}</div>
+                </div>
+                <div>
+                  <strong className="text-blue-800">גודל קובץ:</strong>
+                  <div className="text-blue-700">{result.processing.videoSize}</div>
+                </div>
+                {result.processing.modelCharacteristics && (
+                  <div className="md:col-span-2">
+                    <strong className="text-blue-800">מאפייני המודל:</strong>
+                    <div className="text-blue-700 text-xs mt-1 grid grid-cols-3 gap-2">
+                      <span>מהירות: {result.processing.modelCharacteristics.speed}</span>
+                      <span>איכות: {result.processing.modelCharacteristics.quality}</span>
+                      <span>עלות: {result.processing.modelCharacteristics.cost}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
