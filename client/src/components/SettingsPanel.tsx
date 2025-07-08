@@ -16,6 +16,26 @@ interface WatcherStatus {
   selectedModel?: string;
 }
 
+interface ProcessingLog {
+  timestamp: string;
+  filename: string;
+  filePath: string;
+  decision: 'processed' | 'skipped' | 'error';
+  reason: string;
+}
+
+interface ProcessingLogs {
+  logs: ProcessingLog[];
+  stats: {
+    total: number;
+    processed: number;
+    skipped: number;
+    errors: number;
+    duplicates: number;
+  };
+  date: string;
+}
+
 interface SettingsPanelProps {
   isMinimized: boolean;
   onToggleMinimize: () => void;
@@ -38,6 +58,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
     selectedModel: 'gemini-2.5-pro' // Default to Pro
   });
   const [status, setStatus] = useState<WatcherStatus | null>(null);
+  const [logs, setLogs] = useState<ProcessingLogs | null>(null);
   const [tempWatchFolder, setTempWatchFolder] = useState('');
   const [tempSelectedModel, setTempSelectedModel] = useState('gemini-2.5-pro');
   const [availableModels, setAvailableModels] = useState<Record<string, Model>>({});
@@ -49,11 +70,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
   useEffect(() => {
     loadSettings();
     loadStatus();
+    loadLogs();
     loadModels();
     
-    // Refresh status every 5 seconds
+    // Refresh status and logs every 5 seconds
     const interval = setInterval(() => {
       loadStatus();
+      loadLogs();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -98,6 +121,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
       }
     } catch (error) {
       console.error('שגיאה בטעינת סטטוס:', error);
+    }
+  };
+
+  const loadLogs = async () => {
+    try {
+      const response = await fetch('/api/watcher/logs');
+      const data = await response.json();
+      
+      if (data.success) {
+        setLogs(data);
+      }
+    } catch (error) {
+      console.error('שגיאה בטעינת לוגים:', error);
     }
   };
 
@@ -212,6 +248,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
               <span>{status?.isRunning ? 'פעיל' : 'לא פעיל'}</span>
             </div>
           </div>
+
+
 
           {/* Watch Folder Setting */}
           <div>
@@ -343,6 +381,71 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
               <li>הניתוח האחרון יופיע ראשון ברשימה</li>
             </ul>
           </div>
+
+          {/* Processing Logs */}
+          {logs && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-medium text-gray-700 mb-3">לוגי עיבוד - {logs.date}</h3>
+              
+              {/* Stats Summary */}
+              <div className="grid grid-cols-5 gap-3 mb-4 text-sm">
+                <div className="text-center p-2 bg-white rounded border">
+                  <div className="font-medium text-gray-800">{logs.stats.total}</div>
+                  <div className="text-xs text-gray-600">סה"כ</div>
+                </div>
+                <div className="text-center p-2 bg-green-50 rounded border border-green-200">
+                  <div className="font-medium text-green-700">{logs.stats.processed}</div>
+                  <div className="text-xs text-green-600">עובד</div>
+                </div>
+                <div className="text-center p-2 bg-yellow-50 rounded border border-yellow-200">
+                  <div className="font-medium text-yellow-700">{logs.stats.skipped}</div>
+                  <div className="text-xs text-yellow-600">דולג</div>
+                </div>
+                <div className="text-center p-2 bg-red-50 rounded border border-red-200">
+                  <div className="font-medium text-red-700">{logs.stats.errors}</div>
+                  <div className="text-xs text-red-600">שגיאות</div>
+                </div>
+                <div className="text-center p-2 bg-blue-50 rounded border border-blue-200">
+                  <div className="font-medium text-blue-700">{logs.stats.duplicates}</div>
+                  <div className="text-xs text-blue-600">כפילות</div>
+                </div>
+              </div>
+
+              {/* Recent Logs */}
+              {logs.logs.length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  <div className="text-xs font-medium text-gray-600 mb-2">לוגים אחרונים:</div>
+                  {logs.logs.slice(0, 10).map((log, index) => (
+                    <div key={index} className="bg-white rounded p-2 text-xs border">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium text-gray-700">
+                          {log.filename}
+                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            log.decision === 'processed' ? 'bg-green-100 text-green-700' :
+                            log.decision === 'skipped' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {log.decision === 'processed' ? 'עובד' :
+                             log.decision === 'skipped' ? 'דולג' : 'שגיאה'}
+                          </span>
+                          <span className="text-gray-500">
+                            {new Date(log.timestamp).toLocaleTimeString('he-IL')}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-gray-600">{log.reason}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-500 text-sm py-4">
+                  אין לוגי עיבוד היום
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

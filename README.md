@@ -2,23 +2,39 @@
 
 *עוזר התוכן של כאן חדשות*
 
-A Hebrew-language full-stack web application that generates YouTube content suggestions by analyzing news videos using Google's Gemini Pro AI. The application extracts video frames for thumbnails and provides structured content recommendations in Hebrew for Israeli news content creators.
+A Hebrew-language full-stack web application that generates YouTube content suggestions by analyzing news videos using Google's Gemini AI. Features both manual upload analysis and automatic file monitoring for seamless workflow integration.
 
 ## 🚀 Features
 
-- **Video Upload & Analysis**: Upload MP4 videos up to 100MB for AI analysis
-- **AI-Powered Content Generation**: Uses Google Gemini Pro to analyze video content and generate:
+### **Content Analysis**
+- **Manual Video Upload**: Upload MP4 videos up to 100MB for AI analysis
+- **Automatic File Monitoring**: Monitor folders for new video files and process automatically  
+- **AI-Powered Content Generation**: Uses multiple Gemini models to analyze video content and generate:
   - Content summaries in Hebrew
-  - Multiple title suggestions
-  - Description recommendations
+  - Multiple title suggestions  
+  - Description recommendations with required closing format
   - Thumbnail suggestions with specific timestamps
-- **Intelligent Thumbnail Extraction**: Automatically extracts high-quality (HD 1080p) video frames at AI-suggested timestamps
+
+### **Advanced Workflow**
+- **Daily Analysis Management**: Organized by date with automatic daily file creation
+- **Analysis Reprocessing**: Re-analyze manual uploads with correction notes for better results
+- **Real-time Updates**: Auto-refresh analysis list every 15-30 seconds based on pending analyses
+- **Status Tracking**: Mark analyses as completed/pending with visual indicators
+- **Smart Classification**: Automatic vs Manual analysis detection
+
+### **User Interface**
 - **Hebrew RTL Interface**: Fully localized Hebrew interface with proper right-to-left text support
-- **Interactive Content Editing**: Edit titles and descriptions with inline editing capabilities
-- **User Feedback System**: Like/dislike feedback for generated content with explanations
-- **Airtable Integration**: Optional feedback storage for continuous improvement
-- **Progress Tracking**: Real-time progress bar showing upload, processing, and completion stages
-- **Video Preview**: Preview uploaded videos before processing
+- **Compact Design**: Optimized, space-efficient interface without unnecessary icons
+- **Interactive Content Management**: View, edit, and manage all analyses in organized lists
+- **Manual Thumbnail Extraction**: Extract specific frames from videos on demand (temporary files only)
+- **Auto-refresh Indicator**: Shows last update time with visual status indicator
+
+### **System Features**
+- **Multiple AI Models**: Support for Gemini 2.5 Pro, Flash, and Flash Lite
+- **Clean File Management**: No persistent thumbnail storage - generates on-demand only
+- **Processing Logs**: Detailed logging for automatic file processing
+- **Watch Folder Settings**: Configurable automatic processing with processed file tracking
+- **Feedback System**: User feedback collection with optional Airtable integration
 
 ## 🛠 Tech Stack
 
@@ -30,14 +46,16 @@ A Hebrew-language full-stack web application that generates YouTube content sugg
 
 ### Backend
 - **Node.js** with Express.js
-- **Google Gemini Pro API** for AI video analysis
+- **Google Gemini AI API** (Pro, Flash, Flash Lite models)
 - **Multer** for file upload handling
 - **FFmpeg** for video processing and thumbnail extraction
+- **Chokidar** for file system monitoring
 - **CORS** enabled for cross-origin requests
 
 ### Key Dependencies
 - `@google/generative-ai` - Google Gemini AI integration
 - `fluent-ffmpeg` - Video processing
+- `chokidar` - File system watcher
 - `multer` - File upload middleware
 - `express` - Web framework
 
@@ -45,19 +63,24 @@ A Hebrew-language full-stack web application that generates YouTube content sugg
 
 ```
 iDgimot/
-├── client/                 # React frontend
+├── client/                          # React frontend
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── InputForm.tsx      # Video upload form with progress
-│   │   │   └── OutputDisplay.tsx  # Results display with editing
-│   │   ├── App.tsx               # Main application component
-│   │   └── index.css            # Tailwind styles with RTL
+│   │   │   ├── InputForm.tsx        # Video upload form with progress
+│   │   │   ├── OutputDisplay.tsx    # Results display with editing
+│   │   │   ├── AnalysisList.tsx     # Daily analyses management
+│   │   │   └── SettingsPanel.tsx    # Watch folder configuration
+│   │   ├── App.tsx                  # Main application component
+│   │   └── index.css               # Tailwind styles with RTL
 │   ├── package.json
 │   └── vite.config.ts
-├── server/                 # Node.js backend
-│   ├── uploads/           # Temporary video storage (gitignored)
-│   ├── thumbnails/        # Generated thumbnails (gitignored)
-│   ├── index.js          # Main server file
+├── server/                          # Node.js backend
+│   ├── uploads/                     # Temporary video storage (gitignored)
+│   ├── daily_analyses/              # Daily analysis JSON files (gitignored)
+│   ├── processing_logs/             # Automatic processing logs (gitignored)
+│   ├── index.js                     # Main server file
+│   ├── watcher-settings.json        # File watcher configuration (gitignored)
+│   ├── processed-files.json         # Processed files tracking (gitignored)
 │   └── package.json
 ├── .gitignore
 └── README.md
@@ -95,6 +118,7 @@ npm install
 Create a `.env` file in the `server` directory:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
+# Alternative: GOOGLE_API_KEY=your_gemini_api_key_here
 PORT=3001
 
 # Optional: For feedback storage
@@ -123,219 +147,180 @@ Client will run on `http://localhost:5173`
 
 3. **Open your browser** and navigate to `http://localhost:5173`
 
-## 📋 API Endpoints
+## 📋 Key API Endpoints
 
 ### POST `/api/generate`
 Analyzes uploaded video and generates content suggestions.
 
-**Request**: `multipart/form-data`
-- `video`: Video file (MP4, MOV, AVI - max 100MB)
-- `reporterName`: Reporter's name (string)
-- `videoDate`: Video date (string)
-
-**Response**: JSON
-```json
-{
-  "success": true,
-  "content": {
-    "summary": "Content summary in Hebrew",
-    "titles": ["Title 1", "Title 2", "Title 3"],
-    "descriptions": ["Description 1", "Description 2"],
-    "thumbnails": [
-      {"timestamp": "00:30.500", "description": "Key moment description"},
-      {"timestamp": "02:15.200", "description": "Another key moment"}
-    ]
-  },
-  "reporterName": "Reporter Name",
-  "videoDate": "Date",
-  "processing": {
-    "videoSize": "12.5 MB",
-    "processingTime": 15000,
-    "modelUsed": "gemini-2.5-pro-preview-06-05"
-  }
-}
-```
+### POST `/api/reanalyze`
+Re-analyzes existing content with correction notes (manual uploads only).
 
 ### POST `/api/extract-thumbnail`
-Extracts video frame at specific timestamp.
+Extracts video frame at specific timestamp (returns file directly, no storage).
 
-**Request**: JSON
-- `timestamp`: Time in format "MM:SS.XXX" or seconds
+### GET `/api/daily-analyses`
+Gets analyses for a specific date or current date.
 
-**Response**: JSON
-```json
-{
-  "success": true,
-  "thumbnailUrl": "/api/thumbnails/thumbnail-123456789.jpg"
-}
+### GET `/api/available-dates`
+Lists all available analysis dates.
+
+### File Watcher APIs
+- `GET /api/watcher/status` - Get file watcher status
+- `POST /api/watcher/start` - Start automatic file monitoring
+- `POST /api/watcher/stop` - Stop file monitoring
+- `POST /api/watcher/settings` - Update watch folder settings
+
+## 🎯 Usage Workflows
+
+### Manual Analysis
+1. Upload a Hebrew news video (MP4 format, under 100MB)
+2. Fill in reporter details (name and broadcast date)
+3. Select AI model (Pro/Flash/Flash Lite)
+4. Click "נתח סרטון והפק הצעות" (Analyze video and generate suggestions)
+5. Review and edit generated content
+6. Mark as completed when done
+
+### Automatic Analysis
+1. Configure watch folder in Settings panel
+2. Enable automatic monitoring
+3. Drop video files in the watch folder
+4. System automatically processes new files
+5. View results in the daily analyses list
+6. Mark analyses as completed when reviewed
+
+### Re-analysis with Corrections
+1. For manual uploads, click the reanalyze button (🔄)
+2. Add correction notes (e.g., "The reporter is David Sharon, not Itai Blumenthal")
+3. Submit for improved analysis
+4. Compare results with original
+
+## 🔧 Configuration Options
+
+### AI Models
+- **Gemini 2.5 Pro**: Best quality, slower processing
+- **Gemini 2.5 Flash**: Balanced speed and quality
+- **Gemini 2.5 Flash Lite**: Fastest processing, good quality
+
+### File Watcher Settings
+- **Watch Folder**: Directory to monitor for new videos
+- **Processed Files Tracking**: Prevents duplicate processing
+- **Model Selection**: Choose default model for automatic processing
+
+### System Behavior
+- **Daily Reset**: Automatic daily file organization at 2:00 AM
+- **Auto-refresh**: Smart refresh intervals (15s with pending, 30s without)
+- **File Cleanup**: Temporary thumbnails deleted immediately after use
+
+## 🔀 Deployment Options
+
+### 🌐 Cloud Deployment (main branch)
+Basic version for Render.com cloud deployment:
+- Manual video upload only
+- Basic analysis features
+- No file monitoring
+- Internet accessible
+
+### 🏢 Local Network Deployment (local-network-version branch)
+Full-featured version for internal networks:
+- ✅ Automatic file monitoring and processing
+- ✅ Daily analysis management with date organization
+- ✅ Processing logs and statistics
+- ✅ Multiple AI model support
+- ✅ Reanalysis with correction notes
+- ✅ Clean file management (no accumulation)
+- ✅ Network access configuration (0.0.0.0 binding)
+- ✅ Simplified UI for end users
+- ✅ Auto-refresh with visual indicators
+
+## 🏢 Network Deployment
+
+For deploying on company/office networks:
+
+### Server Requirements
+- **Node.js** runtime environment
+- **FFmpeg** for video processing
+- **Network access** for Gemini API calls
+- **File system permissions** for uploads and processing
+
+### Network Setup
+1. **Install on server**: Copy project to dedicated server machine
+2. **Configure IP access**: Server accessible at `http://[server-ip]:3001`
+3. **Firewall settings**: Open port 3001 for network access
+4. **Watch folder**: Set up shared network folder for automatic processing
+5. **User access**: Employees access via web browser
+
+### Production Commands
+```bash
+# Build client for production
+cd client && npm run build
+
+# Start server (consider using PM2 for process management)
+cd server && npm start
+
+# Or with PM2 for production
+npm install -g pm2
+pm2 start server/index.js --name idgimot
+pm2 startup
+pm2 save
 ```
 
-### GET `/api/thumbnails/:filename`
-Serves generated thumbnail images.
+### Branch Management
+```bash
+# Switch to local network version
+git checkout local-network-version
 
-### POST `/api/feedback`
-Saves user feedback for generated content.
+# Or clone specific branch
+git clone -b local-network-version https://github.com/your-repo/kan-news-content-assistant.git
 
-**Request**: JSON
-```json
-{
-  "contentType": "title|description|thumbnail",
-  "contentText": "The actual content text",
-  "feedback": "like|dislike",
-  "explanation": "Optional user explanation",
-  "reporter": "Reporter name",
-  "videoDate": "Video date"
-}
+# Deploy local network version
+cd kan-news-content-assistant
+npm run install:all
+NODE_ENV=production npm start
 ```
 
-**Response**: JSON
-```json
-{
-  "success": true,
-  "message": "פידבק נשמר בהצלחה ב-Airtable",
-  "feedbackId": "1234567890",
-  "airtableId": "recXXXXXXXXXXXXXX"
-}
-```
+## 🛡️ Security & Data Management
 
-### GET `/api/health`
-Health check endpoint.
+### Data Storage
+- **Temporary uploads**: Videos deleted after processing
+- **Daily analyses**: Stored in JSON files, organized by date
+- **No thumbnail accumulation**: Generated on-demand only
+- **Processing logs**: Kept for debugging and audit
 
-## 🎨 UI Features
-
-### Progress Tracking
-- **Upload Stage (10-30%)**: File preparation and upload
-- **Processing Stage (60%)**: AI analysis with Gemini Pro
-- **Finalizing Stage (90%)**: Results preparation
-- **Complete (100%)**: Success confirmation
-
-### Content Management
-- **Inline Editing**: Click to edit titles and descriptions
-- **Save/Cancel**: Confirm or discard changes
-- **Thumbnail Preview**: Large modal view for thumbnails
-- **Download**: Save thumbnails locally
-
-### Hebrew Interface
-- Full RTL (Right-to-Left) text support
-- Hebrew error messages and feedback
-- Culturally appropriate date formats
-- Israeli news terminology
-
-## 🔧 Configuration
-
-### Video Settings
-- **Max file size**: 100MB
-- **Supported formats**: MP4, MOV, AVI
-- **Thumbnail quality**: HD 1080p (q:v 2)
-- **Thumbnail format**: JPEG
-
-### AI Model Settings
-- **Model**: Google Gemini 2.5 Pro Preview
-- **Content focus**: Hebrew news content
-- **Output format**: Structured JSON
-- **Analysis depth**: Full video content analysis
-
-## 🚧 Development
-
-### Available Scripts
-
-**Root**:
-- `npm run dev` - Start both client and server in development
-- `npm run build` - Build client for production
-- `npm start` - Start production server
-- `npm run render-build` - Build command for Render deployment
-
-**Server**:
-- `npm start` - Start production server
-- `npm run dev` - Start development server with nodemon
-
-**Client**:
-- `npm run dev` - Start Vite development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-
-### Development Notes
-
-- The application uses Hebrew as the primary language
-- All AI prompts are configured for Hebrew content generation
-- Video files are temporarily stored during processing and automatically cleaned up
-- Thumbnails are generated on-demand and cached on the server
-
-## 📝 Usage Example
-
-1. **Upload a Hebrew news video** (MP4 format, under 100MB)
-2. **Fill in reporter details** (name and broadcast date)
-3. **Click "נתח סרטון והפק הצעות"** (Analyze video and generate suggestions)
-4. **Watch the progress bar** as the video is processed
-5. **Review AI-generated content**:
-   - Summary of the video content
-   - Multiple title options
-   - Description suggestions
-   - Thumbnail recommendations with timestamps
-6. **Edit content inline** by clicking on titles or descriptions
-7. **Extract thumbnails** by clicking on timestamp suggestions
-8. **Download thumbnails** for use in YouTube or other platforms
-
-## 🔒 Security Notes
-
-- API keys are stored in environment variables
-- Uploaded videos are temporarily stored and automatically deleted
-- No persistent storage of user content
-- CORS configured for local development
+### Privacy
+- **Local processing**: All data stays on your network
+- **API calls**: Only to Google Gemini (for AI analysis)
+- **No external storage**: Optional Airtable integration only
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
+1. **API Rate Limits**: Switch to Flash Lite model for high volume
+2. **FFmpeg not found**: Ensure FFmpeg is in system PATH
+3. **File access errors**: Check folder permissions for watch directory
+4. **Hebrew text issues**: Ensure browser supports RTL rendering
 
-1. **"Too Many Requests" Error**: Gemini Pro Preview has usage limits
-2. **FFmpeg not found**: Install FFmpeg on your system
-3. **Large file uploads**: Check file size limits (100MB max)
-4. **Hebrew text issues**: Ensure browser supports RTL text rendering
-
-### Debug Mode
-
-Server includes extensive logging for debugging:
-- Video upload validation
-- AI processing steps
-- Thumbnail extraction process
-- Error handling with stack traces
+### Debug Information
+- Server includes extensive Hebrew logging
+- Processing logs saved automatically
+- Error messages in Hebrew for user clarity
 
 ## 🤝 Contributing
 
-This application is designed specifically for Hebrew news content creation. When contributing:
-
-1. Maintain Hebrew language support
+When contributing:
+1. Maintain Hebrew language support throughout
 2. Follow RTL design principles
-3. Test with Hebrew content
-4. Ensure cultural appropriateness for Israeli news context
+3. Test with Hebrew content and file names
+4. Keep the interface clean and efficient
+5. Preserve the dual manual/automatic workflow
 
-## 🚀 Deployment
+## 📄 Recent Updates
 
-### Render.com (Recommended)
-
-This project is configured for easy deployment on Render.com:
-
-1. **Push to GitHub**: Ensure your code is in a GitHub repository
-2. **Connect to Render**: Link your GitHub repo to Render
-3. **Auto-deploy**: Render will detect `render.yaml` and deploy automatically
-
-**Environment Variables Required**:
-```env
-NODE_ENV=production
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-For detailed deployment instructions, see [`DEPLOYMENT.md`](./DEPLOYMENT.md).
-
-### Live Demo
-Once deployed, your app will be available at:
-```
-https://your-app-name.onrender.com
-```
-
-## 📄 License
-
-This project is private and intended for internal use.
+- ✅ **Smart classification**: Proper automatic vs manual detection
+- ✅ **Compact UI**: Removed unnecessary icons, optimized spacing
+- ✅ **Clean file management**: No persistent thumbnail storage
+- ✅ **Enhanced auto-refresh**: Visual indicators and smart intervals
+- ✅ **Reanalysis feature**: Correction notes for manual uploads only
+- ✅ **Daily organization**: Automatic date-based file management
 
 ---
 

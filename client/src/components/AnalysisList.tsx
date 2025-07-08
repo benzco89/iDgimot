@@ -62,10 +62,7 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
   const [isMinimized, setIsMinimized] = useState(false);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
 
-  // Reanalyze modal state
-  const [reanalyzeModalOpen, setReanalyzeModalOpen] = useState(false);
-  const [selectedAnalysisForReanalyze, setSelectedAnalysisForReanalyze] = useState<Analysis | null>(null);
-  const [correctionNotes, setCorrectionNotes] = useState('');
+
 
   // Load available dates
   const loadAvailableDates = async () => {
@@ -216,64 +213,7 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
     }
   };
 
-  // Open reanalyze modal
-  const openReanalyzeModal = (analysis: Analysis) => {
-    setSelectedAnalysisForReanalyze(analysis);
-    setCorrectionNotes('');
-    setReanalyzeModalOpen(true);
-  };
 
-  // Close reanalyze modal
-  const closeReanalyzeModal = () => {
-    setReanalyzeModalOpen(false);
-    setSelectedAnalysisForReanalyze(null);
-    setCorrectionNotes('');
-  };
-
-  // Reanalyze with corrections
-  const reanalyzeWithCorrections = async () => {
-    if (!selectedAnalysisForReanalyze || !correctionNotes.trim()) {
-      alert('אנא הכנס הערות תיקון');
-      return;
-    }
-
-    try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
-      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/reanalyze` : '/api/reanalyze';
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          analysisId: selectedAnalysisForReanalyze.id,
-          correctionNotes: correctionNotes.trim(),
-          reporterName: selectedAnalysisForReanalyze.reporterName,
-          videoDate: selectedAnalysisForReanalyze.videoDate,
-          modelUsed: selectedAnalysisForReanalyze.modelUsed
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`שגיאה בשליחה מחדש: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success) {
-        console.log('✅ ניתוח נשלח מחדש עם הצלחה');
-        closeReanalyzeModal();
-        // Refresh the analyses list
-        loadAnalyses(selectedDate);
-      } else {
-        throw new Error(data.message || 'שגיאה לא ידועה');
-      }
-    } catch (err) {
-      console.error('Error reanalyzing:', err);
-      alert(`שגיאה בשליחה מחדש: ${err instanceof Error ? err.message : 'שגיאה לא ידועה'}`);
-    }
-  };
 
   // Update analysis status
   const updateAnalysisStatus = async (analysisId: string, newStatus: 'pending' | 'completed') => {
@@ -513,21 +453,7 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
                   <span className="text-xs text-gray-500">
                     {formatFileSize(analysis.fileSize)}
                   </span>
-                  {/* Reanalyze button - only for manual uploads, not automatic processing */}
-                  {analysis.reporterName !== 'עיבוד אוטומטי' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openReanalyzeModal(analysis);
-                      }}
-                      className="p-0.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                      title="נתח מחדש עם הערות תיקון"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </button>
-                  )}
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -614,62 +540,7 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
         </button>
       </div>
 
-      {/* Reanalyze Modal */}
-      {reanalyzeModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">
-              נתח מחדש עם הערות תיקון
-            </h3>
-            
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">
-                קובץ: {selectedAnalysisForReanalyze?.originalFilename || selectedAnalysisForReanalyze?.filename}
-              </p>
-              <p className="text-sm text-gray-600 mb-2">
-                כתב: {selectedAnalysisForReanalyze?.reporterName}
-              </p>
-              <p className="text-sm text-gray-600 mb-4">
-                תאריך: {selectedAnalysisForReanalyze?.videoDate}
-              </p>
-            </div>
 
-            <div className="mb-4">
-              <label htmlFor="correctionNotes" className="block text-sm font-medium text-gray-700 mb-2">
-                הערות תיקון:
-              </label>
-              <textarea
-                id="correctionNotes"
-                value={correctionNotes}
-                onChange={(e) => setCorrectionNotes(e.target.value)}
-                placeholder='למשל: "הכתב הוא דוד שרון ולא איתי בלומנטל" או "הכותרת צריכה להתמקד בנושא הסייבר ולא במלחמה"'
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                rows={4}
-                required
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                פרט מה שצריך לתקן - שם כתב, נושא, זווית, וכו'
-              </p>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={closeReanalyzeModal}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                ביטול
-              </button>
-              <button
-                onClick={reanalyzeWithCorrections}
-                disabled={!correctionNotes.trim()}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                שלח לניתוח מחדש
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

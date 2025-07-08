@@ -3,6 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const chokidar = require('chokidar');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const ffmpeg = require('fluent-ffmpeg');
@@ -16,9 +17,126 @@ if (process.platform === 'win32') {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// === Daily Storage System ===
+// Create daily analyses directory if it doesn't exist
+const dailyAnalysesDir = path.join(__dirname, 'daily_analyses');
+if (!fs.existsSync(dailyAnalysesDir)) {
+  fs.mkdirSync(dailyAnalysesDir);
+}
+
+// Helper function to get current date string
+function getCurrentDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Helper function to get daily analyses file path
+function getDailyAnalysesFilePath() {
+  const dateString = getCurrentDateString();
+  return path.join(dailyAnalysesDir, `analyses_${dateString}.json`);
+}
+
+// Helper function to load daily analyses
+function loadDailyAnalyses() {
+  const filePath = getDailyAnalysesFilePath();
+  try {
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('❌ שגיאה בטעינת ניתוחים יומיים:', error);
+  }
+  
+  // Return default structure if file doesn't exist or error
+  return {
+    date: getCurrentDateString(),
+    analyses: []
+  };
+}
+
+// Helper function to save daily analyses
+function saveDailyAnalyses(analysesData) {
+  const filePath = getDailyAnalysesFilePath();
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(analysesData, null, 2), 'utf8');
+    console.log('✅ ניתוחים יומיים נשמרו:', filePath);
+    return true;
+  } catch (error) {
+    console.error('❌ שגיאה בשמירת ניתוחים יומיים:', error);
+    return false;
+  }
+}
+
+// Helper function to add analysis to daily storage
+function addAnalysisToDaily(analysisData) {
+  const dailyData = loadDailyAnalyses();
+  
+  // Create analysis entry
+  const analysis = {
+    id: `analysis_${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    reporterName: analysisData.reporterName,
+    videoDate: analysisData.videoDate,
+    modelUsed: analysisData.modelUsed,
+    videoSize: analysisData.videoSize,
+    processingTime: analysisData.processingTime,
+    content: analysisData.content,
+    originalFilename: analysisData.originalFilename,
+    filename: analysisData.filename,
+    fileSize: analysisData.fileSize,
+    status: 'pending',
+    completedAt: null
+  };
+  
+  dailyData.analyses.push(analysis);
+  
+  if (saveDailyAnalyses(dailyData)) {
+    console.log('✅ ניתוח נוסף לאחסון יומי:', analysis.id);
+    return analysis;
+  }
+  
+  return null;
+}
+
+// Schedule daily reset at 2:00 AM
+function scheduleDailyReset() {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(2, 0, 0, 0); // 2:00 AM
+  
+  const msUntilReset = tomorrow.getTime() - now.getTime();
+  
+  setTimeout(() => {
+    console.log('🔄 מתחיל איפוס יומי בשעה 02:00');
+    // The reset happens automatically when a new day starts
+    // because getCurrentDateString() will return a new date
+    console.log('✅ איפוס יומי הושלם - יום חדש התחיל');
+    
+    // Schedule next reset
+    scheduleDailyReset();
+  }, msUntilReset);
+  
+  console.log(`⏰ איפוס יומי מתוכנן ל-${tomorrow.toLocaleString('he-IL')}`);
+}
+
+// Start daily reset scheduler
+scheduleDailyReset();
+
+// === End Daily Storage System ===
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Simple test endpoint for debugging
+app.get('/test', (req, res) => {
+  res.json({ message: 'Test endpoint works!' });
+});
 
 // Serve static files from the React app (for production)
 if (process.env.NODE_ENV === 'production') {
@@ -31,14 +149,22 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// Configure multer for video uploads
+// Configure multer for video uploads with Hebrew filename support
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    // Try to decode Hebrew filename for extension
+    let extension = path.extname(file.originalname);
+    try {
+      const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      extension = path.extname(decodedName);
+    } catch (error) {
+      // Keep original extension if decoding fails
+    }
+    cb(null, file.fieldname + '-' + uniqueSuffix + extension);
   }
 });
 
@@ -73,6 +199,170 @@ if (process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_BASE_ID) {
   console.log('⚠️ Airtable לא מוגדר - פידבק יישמר רק בלוגים');
 }
 
+
+
+// Helper function to create the main analysis prompt
+function createAnalysisPrompt(reporterName, videoDate, isAutomaticProcessing = false) {
+  const reporterInfo = isAutomaticProcessing ? 'עיבוד אוטומטי' : reporterName;
+  const reporterInstruction = isAutomaticProcessing 
+    ? 'הוראה חשובה: זהו עיבוד אוטומטי של הקובץ. זהה את שם הכתב/ת מהסרטון ויצור תוכן מקצועי בעברית.'
+    : `🚨 **הוראה קריטית - חובה לציית!** 🚨
+    שם הכתב: ${reporterName}
+    תאריך הכתבה: ${videoDate}
+    
+    ⚠️ אתה חייב להשתמש בפרטים אלה במשפט החובה - לא במה שאתה רואה או שומע בסרטון!
+    ⚠️ גם אם הסרטון מכיל שם כתב אחר או תאריך אחר - התעלם מהם לחלוטין!
+    ⚠️ השתמש אך ורק בפרטים שצוינו כאן: ${reporterName} ו-${videoDate}`;
+
+  const descriptionsFormat = isAutomaticProcessing 
+    ? `"כתבתו/כתבתה של [שם הכתב שזיהית] מתוך מהדורת כאן חדשות, ${videoDate}.",
+    "כתבתו/כתבתה של [שם הכתב שזיהית] מתוך מהדורת כאן חדשות, ${videoDate}."`
+    : `"כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.",
+    "כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}."`;;
+
+  return `אתה עוזר AI מקצועי שמנתח כתבות חדשותיות של כאן חדשות ומייצר תוכן לפלטפורמות דיגיטליות.
+
+${reporterInstruction}
+
+נתח את הסרטון החדשותי וצור תוכן מסוגנן ומושך לפלטפורמות דיגיטליות, בהתאם לדרישות הבאות:
+
+## 🎯 כותרות (4 כותרות יוטיוב) - הכותרות חייבות להיות מדויקות עובדתית עם המידע בכתבה:
+
+⚠️ **עיקרון זהב**: התמקד בנושא המרכזי של הכתבה - לא בפרטים שוליים או תוספות!
+🎪 **מצא את ה"ג'וס"**: זהה את הזווית הכי מעניינת, דרמטית או מפתיעה בכתבה
+
+1. **כותרת מרכזית**: התמקד בנושא העיקרי והכי חשוב בכתבה (40-60 תווים)
+2. **כותרת זווית**: הדגש את הזווית הכי מעניינת או השלכות משמעותיות (40-60 תווים)
+3. **כותרת סקרנות**: עורר סקרנות אבל קשור לעיקר - לא לפרטים שוליים (40-60 תווים)
+4. **כותרת ציטוט**: ציטוט חזק מהתוכן שמסכם את המסר המרכזי (40-60 תווים)
+
+🚨 **חובה**: כל כותרת צריכה לעסוק בחלק העיקרי והמשמעותי ביותר בכתבה!
+
+## 📝 תיאורים (2 תיאורים בלבד):
+
+📏 **אורך**: 100-150 מילים (מפורט אבל לא מתוח)
+
+📰 **סגנון עיתונאי נקי:**
+- התחל ישר עם העובדות המעניינות - בלי "וווים" מלאכותיים
+- סדר כרונולוגי או לוגי של האירועים
+- פרטים ספציפיים: שמות, מקומות, זמנים, מספרים
+- שפה עיתונאית רשמית אבל קוראת טוב
+- תן לסיפור לדבר בעצמו - הוא צריך להיות מעניין מטבעו
+- בלי קריאות לפעולה מלאכותיות
+
+🎯 **מבנה פשוט:**
+1. פתיחה עם העובדה המרכזית
+2. פיתוח עם פרטים רלוונטיים  
+3. סיום עם הקשר או השלכות
+4. המשפט החובה עם שם הכתב
+
+**⚠️ CRITICAL REQUIREMENT - חובה מוחלטת ⚠️**: 
+כל תיאור חייב - ללא יוצא מן הכלל - להסתיים בדיוק במשפט הזה:
+${descriptionsFormat}
+
+🚨 MANDATORY: אסור בתכלית האיסור לחרוג מהפורמט הזה! 
+🚨 הדרישה הזו קריטית ביותר - אם לא תעקוב אחריה, התוצאה תיפסל!
+🚨 כל תיאור חייב להסתיים במשפט המדויק - ללא שינויים!
+
+🔥 **זכור: גם אם בסרטון מוזכר כתב אחר או תאריך אחר - התעלם מהם לחלוטין!**
+🔥 **השתמש אך ורק בשם הכתב והתאריך שצוינו בתחילת ההוראות!**
+
+## 🖼️ תמונות מייצגות (3 תמונות):
+
+✅ **הדרמטיות עובדת!** בחר רגעים ויזואליים שיש בהם:
+- מתח ודרמה
+- רגשות חזקים (כעס, שמחה, הפתעה, רצינות)
+- פעולה או תנועה
+- ביטויי פנים מעניינים
+
+📍 **3 רגעים:**
+- **פתיחה דרמטית**: רגע חזק מהתחלה שמושך מיד
+- **שיא מרכזי**: הרגע הכי דרמטי או משמעותי בכתבה  
+- **סיום חזק**: רגע שמשאיר רושם או מסכם בעוצמה
+
+📝 **תיאור כל תמונה**: 
+- timestamp מדויק בפורמט MM:SS.XXX (למשל: 01:23.456)
+- תיאור ויזואלי מפורט של הפעולה, ביטויי הפנים, המצב
+- הסבר למה התמונה הזו דרמטית ותמשוך צופים
+- התמקד בפרטים הוויזואליים: מבטים, תנוחות גוף, הבעות
+
+**⚡ דרישות חשובות:**
+- כל התוכן חייב להיות בעברית בלבד
+- השתמש בשפה עיתונאית מקצועית אך מעניינת  
+- הכותרות צריכות להיות קצרות ומושכות לקליקים
+- התמונות צריכות להיות ויזואלית מעניינות וברורות
+- זהה נושאים רלוונטיים לציבור הישראלי
+- הכותרות חייבות להיות מדויקות עובדתית עם המידע בכתבה
+- הכותרות צריכות לעסוק בחלק העיקרי בכתבה
+
+דבר בעברית טבעית ומקצועית. תן דגש על יצירת תוכן שמושך תשומת לב אבל נשאר אמין וחדשותי.
+
+## ⚠️ אזהרות קריטיות (בהתבסס על פידבק משתמשים):
+
+🚫 **אל תעשה:**
+- אל תתמקד בפרטים שוליים או תוספות לא מרכזיות
+- אל תשכח את הנושא העיקרי של הכתבה
+- אל תכתוב תיאורים קצרים (מתחת ל-100 מילים)
+- אל תיצור כותרות על נושאים משניים
+- אל תוסיף "וווים" מלאכותיים או קריאות לפעולה
+
+✅ **תמיד תעשה:**
+- זהה מה הנושא המרכזי והכי חשוב
+- מצא את הזווית הכי מעניינת ("הג'וס")
+- כתוב תיאורים ארוכים ומפורטים (100-150 מילים)
+- השתמש בסגנון עיתונאי נקי ופשוט
+- תן לסיפור לדבר בעצמו
+
+🚨🚨🚨 FINAL WARNING - אזהרה אחרונה 🚨🚨🚨
+אם אתה לא תסיים את כל התיאורים במשפט המדויק שדרשתי, התוצאה תיפסל לחלוטין!
+כל תיאור חייב להסתיים במשפט הקבוע - זו הדרישה החשובה ביותר!
+אל תשכח - אל תחרוג - אל תשנה!`;
+}
+
+// Helper function to decode Hebrew filenames
+function decodeHebrewFilename(filename) {
+  if (!filename) return '';
+  
+  // Try multiple decoding approaches
+  const decodingMethods = [
+    // Method 1: Direct UTF-8 conversion from latin1
+    () => Buffer.from(filename, 'latin1').toString('utf8'),
+    
+    // Method 2: URI decode
+    () => decodeURIComponent(escape(filename)),
+    
+    // Method 3: Try different encodings
+    () => {
+      try {
+        return Buffer.from(filename, 'binary').toString('utf8');
+      } catch (e) {
+        return filename;
+      }
+    },
+    
+    // Method 4: Just return original if all fail
+    () => filename
+  ];
+  
+  for (const method of decodingMethods) {
+    try {
+      const decoded = method();
+      
+      // Check if the decoded string looks like Hebrew
+      const hebrewRegex = /[\u0590-\u05FF]/;
+      if (hebrewRegex.test(decoded) || decoded !== filename) {
+        console.log(`📁 פענוח הצליח: "${filename}" -> "${decoded}"`);
+        return decoded;
+      }
+    } catch (error) {
+      continue; // Try next method
+    }
+  }
+  
+  console.log(`⚠️ לא ניתן לפענח: "${filename}"`);
+  return filename;
+}
+
 // Helper function to convert file to generative part
 function fileToGenerativePart(path, mimeType) {
   return {
@@ -85,7 +375,18 @@ function fileToGenerativePart(path, mimeType) {
 
 // Helper function to extract frame from video at specific timestamp
 function extractFrameFromVideo(videoPath, timestamp, outputPath) {
+  console.log(`🎬 מנסה לחלץ פריים מ-${videoPath} בזמן ${timestamp} ל-${outputPath}`);
+  
   return new Promise((resolve, reject) => {
+    // Check if input file exists
+    if (!fs.existsSync(videoPath)) {
+      console.error(`❌ קובץ הוידאו לא נמצא: ${videoPath}`);
+      reject(new Error(`קובץ הוידאו לא נמצא: ${videoPath}`));
+      return;
+    }
+    
+    console.log(`🔄 מתחיל חילוץ פריים עם ffmpeg...`);
+    
     ffmpeg(videoPath)
       .seekInput(timestamp)
       .frames(1)
@@ -95,12 +396,19 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
         '-vf scale=1920:1080:force_original_aspect_ratio=decrease', // רזולוציה מקסימלית 1080p
         '-f image2'      // פורמט תמונה
       ])
+      .on('start', (commandLine) => {
+        console.log(`🚀 פקודת ffmpeg: ${commandLine}`);
+      })
+      .on('progress', (progress) => {
+        console.log(`📊 התקדמות: ${progress.percent}%`);
+      })
       .on('end', () => {
         console.log(`✅ פריים חולץ בהצלחה באיכות גבוהה: ${timestamp} -> ${outputPath}`);
         resolve(outputPath);
       })
       .on('error', (err) => {
         console.error(`❌ שגיאה בחילוץ פריים: ${err.message}`);
+        console.error(`❌ פרטי השגיאה המלאים:`, err);
         reject(err);
       })
       .run();
@@ -207,12 +515,12 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         titles: {
           type: "array",
           items: { type: "string" },
-          description: "3 כותרות יוטיוב מושכות ומעניינות לסרטון"
+          description: "4 כותרות יוטיוב מושכות ומעניינות לסרטון"
         },
         descriptions: {
           type: "array", 
           items: { type: "string" },
-          description: "2-3 תיאורים לסרטון עם קריאה לפעולה, כולל שם הכתב ותאריך"
+          description: "2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של [שם הכתב] מתוך מהדורת כאן חדשות, [תאריך].' - ללא חריגות!"
         },
         thumbnails: {
           type: "array",
@@ -242,51 +550,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     console.log('✅ קובץ וידאו הוכן בהצלחה');
 
     // בניית הפרומפט עם הוראות לניתוח הסרטון
-    const prompt = `אתה עורך דיגיטלי מומחה המתמחה בערוץ היוטיוב של "כאן חדשות". משימתך היא לנתח את תוכן הכתבה שתסופק לך ולצור הצעות תוכן מותאמות.
-
-שם הכתב/ת: ${reporterName}
-תאריך שידור: ${videoDate}
-
-הוראות חשובות:
-- אל תתרגם טקסט שמופיע על המסך
-- אל תתאר מה כתוב בסרטון  
-- התמקד בתוכן החדשותי והמסר העיקרי
-- נתח את האירועים והעובדות, לא את הטקסט הגרפי
-
-### שלב 1: ניתוח הסרטון
-נתח את הסרטון ופרק את התוכן לרכיבים מרכזיים.
-
-### שלב 2: הצעות לערוץ היוטיוב
-
-#### ✍️ הצעות לכותרת (3 אפשרויות)
-הכלל: כותרת ראשית המתארת את האירוע, שיכולה לכלול הקשר מעניין, פרט מסקרן, שאלה מושכת, ציטוט וסגנון חדשותי וישיר. אפשר ליצור משחקי מילים או טרנדים
-
-#### 📄 הצעות לתיאור (3 אפשרויות)  
-הכלל: פסקה המסכמת את עיקרי הכתבה (1-3 משפטים) ומשפט חתימה סטנדרטי מותאם מגדרית.
-
-#### 🖼️ הצעות לת'מבנייל (2-3 אפשרויות)
-הכלל: טיימקוד מדויק לפריים ויזואלי חזק, אותנטי ודרמטי. ללא דמות הכתב/ת או טקסט. חפש רגעים עם אקשן, רגש, או אלמנטים ויזואליים בולטים.
-
-פורמט הת'מבנייל:
-"thumbnails": [
-  {
-    "timestamp": "MM:SS.XXX",
-    "description": "תיאור ויזואלי מפורט של הפריים - מה רואים, איך זה נראה, למה זה מושך עין"
-  },
-  {
-    "timestamp": "MM:SS.XXX", 
-    "description": "תיאור ויזואלי מפורט של פריים נוסף עם אלמנט ויזואלי חזק או רגשי"
-  }
-]
-
-הערות חשובות:
-- טיימקוד חייב להיות מדויק בפורמט MM:SS.XXX (למשל: 02:15.750)
-- לת'מבנייל: חפש פריימים ללא דמות הכתב/ת, עם אקשן או רגש חזק
-- לכותרות: השתמש בשפה חדשותית ישירה ומושכת
-- לתיאורים: תמיד סיים עם המשפט הסטנדרטי כולל שם הכתב והתאריך
-- התמקד בתוכן החדשותי בלבד, לא בתרגום טקסט
-
-התשובה חייבת להיות בעברית בלבד.`;
+    const prompt = createAnalysisPrompt(reporterName, videoDate, false);
 
     console.log('שולח בקשה למודל Gemini עם JSON Schema...');
     
@@ -366,10 +630,10 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
           // אם כל הניסיונות נכשלו, החזר תוכן בסיסי
           parsedContent = { 
             summary: "שגיאה בניתוח הסרטון - נסה שוב",
-            titles: ["כתבה של " + reporterName, "חדשות מ-" + videoDate, "עדכון חדשותי"],
+            titles: ["כתבה של " + reporterName, "חדשות מ-" + videoDate, "עדכון חדשותי", "דיווח מיוחד של " + reporterName],
             descriptions: [
-              `כתבתו של ${reporterName}, כאן חדשות ${videoDate}.`,
-              `עדכון חדשותי מאת ${reporterName} - ${videoDate}.`
+              `שגיאה בניתוח הסרטון - נסה שוב. כתבתו של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.`,
+              `עדכון חדשותי מיוחד - המערכת זמנית לא זמינה. כתבתו של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.`
             ],
             thumbnails: [
               {"timestamp": "00:10", "description": "פתיחת הכתבה"},
@@ -387,19 +651,41 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     fs.unlinkSync(videoFile.path);
     console.log('✅ קובץ זמני נמחק');
 
+    // Prepare processing info
+    const processingInfo = {
+      videoSize: formatFileSize(videoFile.size),
+      processingTime: Date.now() - Date.parse(new Date()),
+      modelUsed: modelToUse,
+      modelName: availableModels[modelToUse].name,
+      modelCharacteristics: availableModels[modelToUse]
+    };
+
+    // Decode Hebrew filename properly
+    const decodedFilename = decodeHebrewFilename(videoFile.originalname);
+    console.log('📁 שם קובץ מקורי:', videoFile.originalname);
+    console.log('📁 שם קובץ מפוענח:', decodedFilename);
+
+    // Save analysis to daily storage
+    const savedAnalysis = addAnalysisToDaily({
+      reporterName,
+      videoDate,
+      modelUsed: modelToUse,
+      videoSize: processingInfo.videoSize,
+      processingTime: processingInfo.processingTime,
+      content: parsedContent,
+      originalFilename: decodedFilename,
+      filename: videoFile.filename,
+      fileSize: videoFile.size
+    });
+
     console.log('שולח תשובה ללקוח...');
     res.json({
       success: true,
       content: parsedContent,
       reporterName,
       videoDate,
-      processing: {
-        videoSize: formatFileSize(videoFile.size),
-        processingTime: Date.now() - Date.parse(new Date()),
-        modelUsed: modelToUse,
-        modelName: availableModels[modelToUse].name,
-        modelCharacteristics: availableModels[modelToUse]
-      }
+      processing: processingInfo,
+      analysisId: savedAnalysis ? savedAnalysis.id : null // Add analysis ID to response
     });
     console.log('=== בקשה הושלמה בהצלחה ===');
 
@@ -416,12 +702,10 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       error: 'שגיאה בשרת: ' + error.message
     });
   }
-});
+  });
+  
 
-// Serve static images for thumbnails
-app.use('/api/thumbnails', express.static(path.join(__dirname, 'thumbnails')));
-
-// Endpoint לחילוץ תמונת ת'מבנייל
+// Endpoint לחילוץ תמונת ת'מבנייל (לפי בקשה בלבד, ללא שמירה)
 app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
   console.log('=== בקשה לחילוץ ת\'מבנייל ===');
   
@@ -437,32 +721,29 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
 
     console.log('חולץ ת\'מבנייל בטיימקוד:', timestamp);
 
-    // Create thumbnails directory if it doesn't exist
-    const thumbnailsDir = path.join(__dirname, 'thumbnails');
-    if (!fs.existsSync(thumbnailsDir)) {
-      fs.mkdirSync(thumbnailsDir);
-    }
-
-    // Parse timestamp and extract frame
+    // Parse timestamp and extract frame to temp file
     const timestampInSeconds = parseTimestamp(timestamp);
-    const outputFileName = `thumbnail-${Date.now()}.jpg`;
-    const outputPath = path.join(thumbnailsDir, outputFileName);
+    const tempFileName = `temp_thumbnail_${Date.now()}.jpg`;
+    const tempPath = path.join(__dirname, 'uploads', tempFileName);
 
-    await extractFrameFromVideo(videoFile.path, timestampInSeconds, outputPath);
+    await extractFrameFromVideo(videoFile.path, timestampInSeconds, tempPath);
 
-    // Clean up uploaded file
+    // Read the image file and send as response
+    const imageBuffer = fs.readFileSync(tempPath);
+    
+    // Clean up files immediately
     fs.unlinkSync(videoFile.path);
+    fs.unlinkSync(tempPath);
 
-    // Return the thumbnail URL
-    res.json({
-      success: true,
-      thumbnailUrl: `/api/thumbnails/${outputFileName}`,
-      timestamp: timestamp
-    });
+    // Send image as response
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Content-Disposition', `attachment; filename="thumbnail_${timestamp.replace(/[:.]/g, '_')}.jpg"`);
+    res.send(imageBuffer);
 
   } catch (error) {
     console.error('❌ שגיאה בחילוץ ת\'מבנייל:', error);
     
+    // Clean up on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -473,7 +754,7 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
   }
 });
 
-// Endpoint לשמירת פידבק משתמש
+  // Endpoint לשמירת פידבק משתמש
 app.post('/api/feedback', async (req, res) => {
   console.log('=== בקשה לשמירת פידבק ===');
   
@@ -603,6 +884,814 @@ app.get('/api/models', (req, res) => {
   });
 });
 
+// Endpoint לקבלת רשימת תאריכים זמינים
+app.get('/api/available-dates', (req, res) => {
+  console.log('=== בקשה לרשימת תאריכים זמינים ===');
+  
+  try {
+    const files = fs.readdirSync(dailyAnalysesDir);
+    const dates = files
+      .filter(file => file.startsWith('analyses_') && file.endsWith('.json'))
+      .map(file => {
+        const dateStr = file.replace('analyses_', '').replace('.json', '');
+        const filePath = path.join(dailyAnalysesDir, file);
+        const stats = fs.statSync(filePath);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        
+        return {
+          date: dateStr,
+          displayDate: new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL'),
+          analysisCount: data.analyses ? data.analyses.length : 0,
+          lastModified: stats.mtime.toISOString()
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date)); // Sort newest first
+    
+    console.log(`✅ נמצאו ${dates.length} תאריכים זמינים`);
+    
+    res.json({
+      success: true,
+      dates: dates,
+      currentDate: getCurrentDateString()
+    });
+    
+  } catch (error) {
+    console.error('❌ שגיאה בקבלת תאריכים:', error);
+    res.status(500).json({
+      success: false,
+      error: 'שגיאה בקבלת רשימת התאריכים'
+    });
+  }
+});
+
+// Endpoint לקבלת ניתוחים יומיים (עם תמיכה בתאריך ספציפי)
+app.get('/api/daily-analyses', (req, res) => {
+  console.log('=== בקשה לקבלת ניתוחים יומיים ===');
+  
+  const requestedDate = req.query.date; // Get date from query parameter
+  
+  try {
+    let dailyData;
+    let targetDate;
+    
+    if (requestedDate) {
+      // Load specific date
+      targetDate = requestedDate;
+      const filePath = path.join(dailyAnalysesDir, `analyses_${requestedDate}.json`);
+      
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf8');
+        dailyData = JSON.parse(data);
+        console.log(`✅ נטענו ניתוחים מתאריך: ${requestedDate}`);
+      } else {
+        console.log(`⚠️ לא נמצא קובץ לתאריך: ${requestedDate}`);
+        return res.json({
+          success: true,
+          date: requestedDate,
+          analyses: [],
+          totalCount: 0,
+          pendingCount: 0,
+          completedCount: 0,
+          message: `לא נמצאו ניתוחים עבור תאריך ${requestedDate}`
+        });
+      }
+    } else {
+      // Load current date (existing behavior)
+      dailyData = loadDailyAnalyses();
+      targetDate = dailyData.date;
+    }
+    
+    console.log(`✅ נמצאו ${dailyData.analyses.length} ניתוחים ליום ${targetDate}`);
+
+    // Sort analyses by timestamp - newest first (reverse chronological order)
+    const sortedAnalyses = [...dailyData.analyses].sort((a, b) => {
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
+
+    res.json({
+      success: true,
+      date: targetDate,
+      analyses: sortedAnalyses,
+      totalCount: dailyData.analyses.length,
+      pendingCount: dailyData.analyses.filter(a => a.status === 'pending').length,
+      completedCount: dailyData.analyses.filter(a => a.status === 'completed').length
+    });
+    
+  } catch (error) {
+    console.error('❌ שגיאה בקבלת ניתוחים יומיים:', error);
+    res.status(500).json({
+      error: 'שגיאה בקבלת ניתוחים יומיים: ' + error.message
+    });
+  }
+});
+
+// Endpoint לעדכון סטטוס ניתוח
+app.put('/api/analysis/:id/status', (req, res) => {
+  console.log('=== בקשה לעדכון סטטוס ניתוח ===');
+  
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    if (!id || !status) {
+      return res.status(400).json({
+        error: 'חסרים פרמטרים נדרשים: id, status'
+      });
+    }
+    
+    if (!['pending', 'completed'].includes(status)) {
+      return res.status(400).json({
+        error: 'סטטוס לא חוקי. חייב להיות: pending או completed'
+      });
+    }
+    
+    const dailyData = loadDailyAnalyses();
+    const analysisIndex = dailyData.analyses.findIndex(a => a.id === id);
+    
+    if (analysisIndex === -1) {
+      return res.status(404).json({
+        error: 'ניתוח לא נמצא'
+      });
+    }
+    
+    // Update analysis status
+    dailyData.analyses[analysisIndex].status = status;
+    dailyData.analyses[analysisIndex].completedAt = status === 'completed' ? new Date().toISOString() : null;
+    
+    if (saveDailyAnalyses(dailyData)) {
+      console.log(`✅ סטטוס ניתוח עודכן: ${id} -> ${status}`);
+      
+      res.json({
+        success: true,
+        message: `סטטוס ניתוח עודכן ל-${status}`,
+        analysis: dailyData.analyses[analysisIndex]
+      });
+    } else {
+      res.status(500).json({
+        error: 'שגיאה בשמירת עדכון הסטטוס'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ שגיאה בעדכון סטטוס ניתוח:', error);
+    res.status(500).json({
+      error: 'שגיאה בעדכון סטטוס ניתוח: ' + error.message
+    });
+  }
+});
+
+// Endpoint למחיקת ניתוח
+app.delete('/api/analysis/:id', (req, res) => {
+  console.log('=== בקשה למחיקת ניתוח ===');
+  
+  try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
+        error: 'חסר מזהה ניתוח'
+      });
+    }
+    
+    // Search through all daily analysis files to find the analysis
+    const analysesDir = path.join(__dirname, 'daily_analyses');
+    let foundAnalysis = null;
+    let targetFile = null;
+    
+    if (fs.existsSync(analysesDir)) {
+      const files = fs.readdirSync(analysesDir);
+      
+      for (const file of files) {
+        if (file.startsWith('analyses_') && file.endsWith('.json')) {
+          const filePath = path.join(analysesDir, file);
+          try {
+            const data = fs.readFileSync(filePath, 'utf8');
+            const dailyData = JSON.parse(data);
+            
+            const analysisIndex = dailyData.analyses.findIndex(a => a.id === id);
+            if (analysisIndex !== -1) {
+              foundAnalysis = dailyData.analyses[analysisIndex];
+              targetFile = { filePath, dailyData, analysisIndex };
+              break;
+            }
+          } catch (error) {
+            console.warn(`⚠️ שגיאה בקריאת קובץ ${file}:`, error);
+          }
+        }
+      }
+    }
+    
+    if (!foundAnalysis || !targetFile) {
+      return res.status(404).json({
+        error: 'ניתוח לא נמצא בשום תאריך'
+      });
+    }
+    
+    // Remove analysis from array
+    const deletedAnalysis = targetFile.dailyData.analyses.splice(targetFile.analysisIndex, 1)[0];
+    
+    // Save the updated file
+    try {
+      fs.writeFileSync(targetFile.filePath, JSON.stringify(targetFile.dailyData, null, 2), 'utf8');
+      console.log(`✅ ניתוח נמחק: ${id} (${deletedAnalysis.reporterName})`);
+      
+      res.json({
+        success: true,
+        message: 'ניתוח נמחק בהצלחה',
+        deletedAnalysis: {
+          id: deletedAnalysis.id,
+          reporterName: deletedAnalysis.reporterName,
+          videoDate: deletedAnalysis.videoDate
+        }
+      });
+    } catch (saveError) {
+      console.error('❌ שגיאה בשמירת קובץ לאחר מחיקה:', saveError);
+      res.status(500).json({
+        error: 'שגיאה בשמירת הקובץ לאחר מחיקה'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ שגיאה במחיקת ניתוח:', error);
+    res.status(500).json({
+      error: 'שגיאה במחיקת ניתוח: ' + error.message
+    });
+  }
+});
+
+// === File Watcher System ===
+
+// Settings storage
+const settingsFile = path.join(__dirname, 'watcher-settings.json');
+let watcherSettings = {
+  watchFolder: '',
+  isEnabled: false,
+  processedFiles: [], // Track processed files to avoid duplicates
+  selectedModel: 'gemini-2.5-pro' // Default to Pro model for watcher
+};
+
+// Track files currently being processed to avoid duplicate processing
+const currentlyProcessing = new Set();
+
+// Load watcher settings on startup
+function loadWatcherSettings() {
+  try {
+    if (fs.existsSync(settingsFile)) {
+      const data = fs.readFileSync(settingsFile, 'utf8');
+      watcherSettings = { ...watcherSettings, ...JSON.parse(data) };
+      console.log('✅ הגדרות מעקב קבצים נטענו:', watcherSettings.watchFolder);
+    }
+  } catch (error) {
+    console.error('❌ שגיאה בטעינת הגדרות מעקב:', error);
+  }
+}
+
+// Save watcher settings
+function saveWatcherSettings() {
+  try {
+    fs.writeFileSync(settingsFile, JSON.stringify(watcherSettings, null, 2));
+    console.log('✅ הגדרות מעקב נשמרו');
+    return true;
+  } catch (error) {
+    console.error('❌ שגיאה בשמירת הגדרות:', error);
+    return false;
+  }
+}
+
+// Check if video file meets criteria
+// Helper function to log file processing decisions
+function logFileProcessing(filename, filePath, decision, reason) {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    filename,
+    filePath,
+    decision, // 'processed', 'skipped', 'error'
+    reason
+  };
+  
+  // Ensure processing log directory exists
+  const logsDir = path.join(__dirname, 'processing_logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir);
+  }
+  
+  // Create daily log file
+  const dateString = getCurrentDateString();
+  const logFilePath = path.join(logsDir, `processing_${dateString}.json`);
+  
+  let logs = [];
+  try {
+    if (fs.existsSync(logFilePath)) {
+      const data = fs.readFileSync(logFilePath, 'utf8');
+      logs = JSON.parse(data);
+    }
+  } catch (error) {
+    console.warn('⚠️ שגיאה בטעינת לוגים קיימים:', error);
+  }
+  
+  logs.push(logEntry);
+  
+  try {
+    fs.writeFileSync(logFilePath, JSON.stringify(logs, null, 2), 'utf8');
+    console.log(`📝 לוג נשמר: ${decision} - ${filename} - ${reason}`);
+  } catch (error) {
+    console.error('❌ שגיאה בשמירת לוג:', error);
+  }
+}
+
+function shouldProcessFile(filename, filePath) {
+  try {
+    // Check filename pattern: starts with "20_vtr"
+    if (!filename.toLowerCase().startsWith('20_vtr')) {
+      logFileProcessing(filename, filePath, 'skipped', 'לא מתחיל ב-20_vtr');
+      return false;
+    }
+    
+    // Check if file is MP4
+    if (!filename.toLowerCase().endsWith('.mp4')) {
+      logFileProcessing(filename, filePath, 'skipped', 'לא קובץ MP4');
+      return false;
+    }
+    
+    // Check if already processed
+    if (watcherSettings.processedFiles.includes(filename)) {
+      logFileProcessing(filename, filePath, 'skipped', 'כבר עובד בעבר (כפילות)');
+      return false;
+    }
+    
+    // Check if currently being processed
+    if (currentlyProcessing.has(filename)) {
+      logFileProcessing(filename, filePath, 'skipped', 'נמצא כעת בתהליך עיבוד');
+      return false;
+    }
+    
+    // Check file duration (must be > 1 minute)
+    return new Promise((resolve) => {
+      ffmpeg.ffprobe(filePath, (err, metadata) => {
+        if (err) {
+          console.error('❌ שגיאה בבדיקת אורך הסרטון:', err);
+          logFileProcessing(filename, filePath, 'error', `שגיאה בבדיקת מטאדטה: ${err.message}`);
+          resolve(false);
+          return;
+        }
+        
+        const duration = metadata.format.duration;
+        const isLongEnough = duration && duration > 60; // More than 1 minute
+        
+        if (isLongEnough) {
+          logFileProcessing(filename, filePath, 'processed', `אורך מתאים: ${Math.round(duration)}s`);
+          console.log(`📹 קובץ ${filename}: אורך ${duration}s, מתאים: ${isLongEnough}`);
+        } else {
+          logFileProcessing(filename, filePath, 'skipped', `אורך קצר מדי: ${Math.round(duration)}s (נדרש >60s)`);
+          console.log(`📹 קובץ ${filename}: אורך ${duration}s, קצר מדי`);
+        }
+        
+        resolve(isLongEnough);
+      });
+    });
+    
+  } catch (error) {
+    console.error('❌ שגיאה בבדיקת קובץ:', error);
+    logFileProcessing(filename, filePath, 'error', `שגיאה כללית: ${error.message}`);
+    return false;
+  }
+}
+
+// Process video file automatically
+async function processVideoFile(filePath, filename) {
+  // Mark as currently processing
+  currentlyProcessing.add(filename);
+  
+  try {
+    console.log(`🤖 מתחיל עיבוד אוטומטי של: ${filename}`);
+    
+
+    
+    // Get current date for the analysis
+    const currentDate = new Date().toLocaleDateString('he-IL');
+    
+    // Create form data for analysis
+    const formData = {
+      reporterName: '', // No reporter name for automatic processing
+      videoDate: currentDate,
+      selectedModel: watcherSettings.selectedModel || 'gemini-2.5-pro', // Use selected model from settings
+      videoFile: {
+        path: filePath,
+        filename: filename,
+        mimetype: 'video/mp4',
+        size: fs.statSync(filePath).size
+      }
+    };
+    
+    // Process using existing analysis logic
+    console.log('📊 שולח לניתוח אוטומטי...');
+    const result = await analyzeVideoAutomatically(formData);
+    
+    if (result.success) {
+      console.log(`✅ עיבוד אוטומטי הושלם: ${filename}`);
+      
+      // Mark as processed only after successful analysis
+      watcherSettings.processedFiles.push(filename);
+      saveWatcherSettings();
+      console.log(`📊 קובץ נוסף לרשימת המעובדים: ${filename}`);
+      
+      // Add to daily analyses
+      const analysisData = {
+        reporterName: 'עיבוד אוטומטי',
+        videoDate: currentDate,
+        modelUsed: formData.selectedModel,
+        videoSize: formData.videoFile.size,
+        processingTime: result.processingTime,
+        content: result.content,
+        originalFilename: filename,
+        filename: filename,
+        fileSize: formData.videoFile.size,
+        originalPath: filePath // שמור את הנתיב המקורי
+      };
+      
+
+
+      addAnalysisToDaily(analysisData);
+      console.log(`💾 ניתוח נשמר בקובץ היומי`);
+      
+    } else {
+      console.error(`❌ עיבוד אוטומטי נכשל: ${result.error}`);
+      // Don't add to processed files if analysis failed
+    }
+    
+  } catch (error) {
+    console.error(`❌ שגיאה בעיבוד אוטומטי של ${filename}:`, error);
+    // Don't add to processed files if error occurred
+  } finally {
+    // Remove from currently processing list
+    currentlyProcessing.delete(filename);
+    console.log(`🔄 הסרה מרשימת עיבוד: ${filename}`);
+  }
+}
+
+// Automatic analysis function (uses the same full prompt as manual processing)
+async function analyzeVideoAutomatically(formData) {
+  const startTime = Date.now();
+  
+  try {
+    // Get the generative model (use selected model from settings)
+    const model = genAI.getGenerativeModel({ 
+      model: formData.selectedModel || 'gemini-2.5-pro'
+    });
+    
+    // Convert video file
+    const videoPart = fileToGenerativePart(formData.videoFile.path, formData.videoFile.mimetype);
+    
+    // Use the same detailed Hebrew prompt as manual analysis
+    const prompt = createAnalysisPrompt('', formData.videoDate, true);
+
+    const responseSchema = {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          description: "תקציר התוכן החדשותי של הכתבה ב-2-3 משפטים - מה הסיפור העיקרי?"
+        },
+        titles: {
+          type: "array",
+          items: { type: "string" },
+          description: "4 כותרות יוטיוב מושכות ומעניינות לסרטון"
+        },
+        descriptions: {
+          type: "array", 
+          items: { type: "string" },
+          description: "2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של [שם הכתב] מתוך מהדורת כאן חדשות, [תאריך].' - ללא חריגות!"
+        },
+        thumbnails: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              timestamp: { type: "string", description: "זמן בפורמט MM:SS.XXX (למשל: 02:15.750)" },
+              description: { type: "string", description: "תיאור ויזואלי מפורט של הפריים - מה רואים, איך זה נראה, למה זה מושך עין" }
+            },
+            required: ["timestamp", "description"]
+          },
+          description: "2-3 רגעים ויזואליים מעניינים לתמונות ת'מבנייל"
+        }
+      },
+      required: ["summary", "titles", "descriptions", "thumbnails"]
+    };
+    
+    console.log('שולח בקשה למודל Gemini עם JSON Schema...');
+    
+    let parsedContent;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    // נסה עד 3 פעמים לקבל JSON תקין
+    while (attempts < maxAttempts) {
+      attempts++;
+      console.log(`🔄 ניסיון ${attempts}/${maxAttempts}`);
+      
+      try {
+        const result = await model.generateContent({
+          contents: [{ parts: [{ text: prompt }, videoPart] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: responseSchema,
+            temperature: 0.7,
+            maxOutputTokens: 4096
+          }
+        });
+        
+        const response = await result.response;
+        let generatedContent = response.text();
+        console.log('✅ תשובה התקבלה מהמודל, אורך:', generatedContent.length, 'תווים');
+        
+        // אם זה thinking model, חפש את ה-JSON האחרון בתוכן
+        if (generatedContent.includes('```json') || generatedContent.includes('{')) {
+          console.log('🧠 זוהה thinking model - מחפש JSON סופי...');
+          
+          // חפש את כל בלוקי ה-JSON בתוכן
+          const jsonBlocks = [];
+          
+          // חפש JSON בתוך ```json blocks
+          const jsonCodeBlocks = generatedContent.match(/```json\s*([\s\S]*?)\s*```/g);
+          if (jsonCodeBlocks) {
+            jsonCodeBlocks.forEach(block => {
+              const jsonContent = block.replace(/```json\s*|\s*```/g, '').trim();
+              if (jsonContent.startsWith('{')) {
+                jsonBlocks.push(jsonContent);
+              }
+            });
+          }
+          
+          // חפש JSON ישירות (שמתחיל ב-{ ומסתיים ב-})
+          const jsonMatches = generatedContent.match(/\{[\s\S]*?\}(?=\s*$|\s*\n\s*$)/g);
+          if (jsonMatches) {
+            jsonMatches.forEach(match => {
+              if (match.includes('"summary"') || match.includes('"titles"')) {
+                jsonBlocks.push(match.trim());
+              }
+            });
+          }
+          
+          if (jsonBlocks.length > 0) {
+            console.log(`✅ נמצא JSON סופי, אורך: ${jsonBlocks[jsonBlocks.length - 1].length} תווים`);
+            generatedContent = jsonBlocks[jsonBlocks.length - 1]; // קח את האחרון
+          }
+        }
+        
+        // נסה לפרסר את ה-JSON
+        parsedContent = JSON.parse(generatedContent);
+        console.log('✅ JSON פורסר בהצלחה');
+        console.log('📊 מבנה התוכן:', {
+          summary: !!parsedContent.summary,
+          titles: parsedContent.titles?.length || 0,
+          descriptions: parsedContent.descriptions?.length || 0,
+          thumbnails: parsedContent.thumbnails?.length || 0
+        });
+        
+        break; // הצלחנו - צא מהלולאה
+        
+      } catch (error) {
+        console.log(`❌ שגיאה בניסיון ${attempts}:`, error.message);
+        if (attempts >= maxAttempts) {
+          throw new Error(`כשל בכל הניסיונות לקבל JSON תקין: ${error.message}`);
+        }
+        // המתן קצת לפני הניסיון הבא
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    const processingTime = Date.now() - startTime;
+    
+    return {
+      success: true,
+      content: parsedContent,
+      processingTime: processingTime
+    };
+    
+  } catch (error) {
+    console.error('❌ שגיאה בניתוח אוטומטי:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+
+
+// File watcher instance
+let fileWatcher = null;
+
+// Start file watcher
+function startFileWatcher() {
+  if (!watcherSettings.watchFolder || !watcherSettings.isEnabled) {
+    console.log('⚠️ מעקב קבצים לא מופעל או לא מוגדר נתיב');
+    return;
+  }
+  
+  if (!fs.existsSync(watcherSettings.watchFolder)) {
+    console.error('❌ תיקיית מעקב לא קיימת:', watcherSettings.watchFolder);
+    return;
+  }
+  
+  // Stop existing watcher if running
+  if (fileWatcher) {
+    fileWatcher.close();
+  }
+  
+  console.log(`👁️ מתחיל מעקב אחר תיקייה: ${watcherSettings.watchFolder}`);
+  
+  fileWatcher = chokidar.watch(watcherSettings.watchFolder, {
+    ignored: /[\/\\]\./, // ignore dotfiles
+    persistent: true,
+    ignoreInitial: true // Don't process existing files on startup
+  });
+  
+  fileWatcher.on('add', async (filePath) => {
+    const filename = path.basename(filePath);
+    console.log(`📁 קובץ חדש זוהה: ${filename}`);
+    
+    // Check if file meets criteria
+    const shouldProcess = await shouldProcessFile(filename, filePath);
+    
+    if (shouldProcess) {
+      console.log(`✅ קובץ עומד בקריטריונים, מתחיל עיבוד: ${filename}`);
+      await processVideoFile(filePath, filename);
+    } else {
+      console.log(`⏭️ קובץ לא עומד בקריטריונים או כבר עובד: ${filename}`);
+    }
+  });
+  
+  fileWatcher.on('error', (error) => {
+    console.error('❌ שגיאה במעקב קבצים:', error);
+  });
+}
+
+// Stop file watcher
+function stopFileWatcher() {
+  if (fileWatcher) {
+    fileWatcher.close();
+    fileWatcher = null;
+    console.log('🛑 מעקב קבצים הופסק');
+  }
+}
+
+// Load settings on startup
+loadWatcherSettings();
+
+// API endpoints for watcher settings
+
+// Get watcher settings
+app.get('/api/watcher/settings', (req, res) => {
+  res.json({
+    success: true,
+    settings: {
+      watchFolder: watcherSettings.watchFolder,
+      isEnabled: watcherSettings.isEnabled,
+      processedFilesCount: watcherSettings.processedFiles.length,
+      selectedModel: watcherSettings.selectedModel
+    }
+  });
+});
+
+// Update watcher settings
+app.post('/api/watcher/settings', (req, res) => {
+  try {
+    const { watchFolder, isEnabled, selectedModel } = req.body;
+    
+    if (watchFolder !== undefined) {
+      watcherSettings.watchFolder = watchFolder;
+    }
+    
+    if (isEnabled !== undefined) {
+      watcherSettings.isEnabled = isEnabled;
+    }
+    
+    if (selectedModel !== undefined) {
+      watcherSettings.selectedModel = selectedModel;
+    }
+    
+    if (saveWatcherSettings()) {
+      // Restart watcher if enabled
+      if (watcherSettings.isEnabled) {
+        startFileWatcher();
+      } else {
+        stopFileWatcher();
+      }
+      
+      res.json({
+        success: true,
+        message: 'הגדרות עודכנו בהצלחה',
+        settings: {
+          watchFolder: watcherSettings.watchFolder,
+          isEnabled: watcherSettings.isEnabled,
+          selectedModel: watcherSettings.selectedModel
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'שגיאה בשמירת הגדרות'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ שגיאה בעדכון הגדרות מעקב:', error);
+    res.status(500).json({
+      success: false,
+      error: 'שגיאה בעדכון הגדרות: ' + error.message
+    });
+  }
+});
+
+// Get watcher status
+app.get('/api/watcher/status', (req, res) => {
+  res.json({
+    success: true,
+    status: {
+      isRunning: !!fileWatcher,
+      isEnabled: watcherSettings.isEnabled,
+      watchFolder: watcherSettings.watchFolder,
+      processedFilesCount: watcherSettings.processedFiles.length,
+      lastProcessedFiles: watcherSettings.processedFiles.slice(-5), // Last 5 files
+      selectedModel: watcherSettings.selectedModel
+    }
+  });
+});
+
+// Clear processed files list
+app.post('/api/watcher/clear-processed', (req, res) => {
+  try {
+    watcherSettings.processedFiles = [];
+    if (saveWatcherSettings()) {
+      res.json({
+        success: true,
+        message: 'רשימת קבצים מעובדים נמחקה'
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'שגיאה בשמירת הגדרות'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'שגיאה במחיקת רשימה: ' + error.message
+    });
+  }
+});
+
+// Get processing logs
+app.get('/api/watcher/logs', (req, res) => {
+  try {
+    const dateString = getCurrentDateString();
+    const logsDir = path.join(__dirname, 'processing_logs');
+    const logFilePath = path.join(logsDir, `processing_${dateString}.json`);
+    
+    let logs = [];
+    if (fs.existsSync(logFilePath)) {
+      const data = fs.readFileSync(logFilePath, 'utf8');
+      logs = JSON.parse(data);
+    }
+    
+    // Get summary stats
+    const stats = {
+      total: logs.length,
+      processed: logs.filter(log => log.decision === 'processed').length,
+      skipped: logs.filter(log => log.decision === 'skipped').length,
+      errors: logs.filter(log => log.decision === 'error').length,
+      duplicates: logs.filter(log => log.reason.includes('כפילות')).length
+    };
+    
+    res.json({
+      success: true,
+      logs: logs.reverse(), // Most recent first
+      stats,
+      date: dateString
+    });
+    
+  } catch (error) {
+    console.error('❌ שגיאה בטעינת לוגים:', error);
+    res.status(500).json({
+      success: false,
+      error: 'שגיאה בטעינת לוגים: ' + error.message
+    });
+  }
+});
+
+// Start watcher if enabled on startup
+if (watcherSettings.isEnabled) {
+  setTimeout(() => {
+    startFileWatcher();
+  }, 2000); // Wait 2 seconds after server start
+}
+
+// === End File Watcher System ===
+
+
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'השרת פועל תקין' });
@@ -620,8 +1709,10 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`השרת פועל על פורט ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 השרת פועל על פורט ${PORT}`);
+  console.log('🏠 גישה מקומית: http://localhost:' + PORT);
+  console.log('🏢 גישה ברשת: http://[YOUR_IP]:' + PORT);
   console.log('מוכן לקבל העלאות סרטונים וניתוח עם Gemini Pro');
   console.log('API Key מוגדר:', !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
 }); 

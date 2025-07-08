@@ -24,6 +24,13 @@ pnpm-debug.log*
 /server/uploads/
 /server/thumbnails/
 
+# Local network version specific files
+/server/daily_analyses/
+/server/processing_logs/
+/server/watcher-settings.json
+/server/processed-files.json
+/server/prompt-improvements.json
+
 # Runtime data
 *.pid
 *.seed
