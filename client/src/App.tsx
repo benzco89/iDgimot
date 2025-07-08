@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import InputForm from './components/InputForm'
 import OutputDisplay from './components/OutputDisplay'
+import AnalysisList from './components/AnalysisList'
+import SettingsPanel from './components/SettingsPanel'
 import './App.css'
 
 interface FormData {
@@ -26,6 +28,20 @@ interface ApiResponse {
   content: ContentData
   reporterName: string
   videoDate: string
+  analysisId?: string
+}
+
+interface Analysis {
+  id: string;
+  timestamp: string;
+  reporterName: string;
+  videoDate: string;
+  modelUsed: string;
+  videoSize: string;
+  processingTime: number;
+  content: ContentData;
+  status: 'pending' | 'completed';
+  completedAt: string | null;
 }
 
 function App() {
@@ -38,6 +54,13 @@ function App() {
     percentage: number;
     message: string;
   }>({ stage: '', percentage: 0, message: '' })
+  
+  // States for analysis list
+  const [selectedAnalysis, setSelectedAnalysis] = useState<Analysis | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  
+  // States for settings panel
+  const [isSettingsMinimized, setIsSettingsMinimized] = useState(true)
 
   const handleFormSubmit = async (formData: FormData) => {
     setIsLoading(true)
@@ -88,6 +111,9 @@ function App() {
       setResult(data)
       setCurrentVideoFile(formData.video)
       
+      // Trigger refresh of analysis list
+      setRefreshTrigger(prev => prev + 1)
+      
       // Clear progress after a short delay
       setTimeout(() => {
         setProgress({ stage: '', percentage: 0, message: '' })
@@ -99,6 +125,23 @@ function App() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Handle analysis selection from list
+  const handleAnalysisSelect = (analysis: Analysis) => {
+    setSelectedAnalysis(analysis)
+    
+    // Convert analysis to ApiResponse format for OutputDisplay
+    const analysisAsResult: ApiResponse = {
+      success: true,
+      content: analysis.content,
+      reporterName: analysis.reporterName,
+      videoDate: analysis.videoDate,
+      analysisId: analysis.id
+    }
+    
+    setResult(analysisAsResult)
+    setCurrentVideoFile(null) // Clear current video file when selecting from history
   }
 
   return (
@@ -113,9 +156,17 @@ function App() {
           </p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Input Form - 2 columns */}
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Right sidebar - 4 columns (רשימה וטופס) */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Analysis List - ניתוחים יומיים למעלה */}
+            <AnalysisList 
+              onAnalysisSelect={handleAnalysisSelect}
+              selectedAnalysisId={selectedAnalysis?.id}
+              refreshTrigger={refreshTrigger}
+            />
+            
+            {/* Input Form - העלאה ידנית */}
             <InputForm 
               onSubmit={handleFormSubmit} 
               isLoading={isLoading}
@@ -123,10 +174,16 @@ function App() {
               videoFile={currentVideoFile}
               progress={progress}
             />
+            
+            {/* Settings Panel - הגדרות מעקב קבצים למטה */}
+            <SettingsPanel 
+              isMinimized={isSettingsMinimized}
+              onToggleMinimize={() => setIsSettingsMinimized(!isSettingsMinimized)}
+            />
           </div>
           
-          {/* Results - 3 columns */}
-          <div className="lg:col-span-3">
+          {/* Results - 8 columns (תוצאות מולצות) */}
+          <div className="lg:col-span-8">
             {result && <OutputDisplay result={result} videoFile={currentVideoFile || undefined} />}
           </div>
         </div>

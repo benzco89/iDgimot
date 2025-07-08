@@ -39,6 +39,7 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
   
   const [availableModels, setAvailableModels] = useState<Record<string, Model>>({});
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -117,9 +118,27 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">עוזר התוכן של כאן חדשות</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">עוזר התוכן של כאן חדשות</h2>
+        <button
+          onClick={() => setIsMinimized(!isMinimized)}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          title={isMinimized ? "הרחב טופס" : "מזער טופס"}
+        >
+          {isMinimized ? (
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          )}
+        </button>
+      </div>
       
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {!isMinimized && (
+        <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label htmlFor="video" className="block text-sm font-medium text-gray-700 mb-2">
             העלאת סרטון לניתוח
@@ -328,7 +347,8 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
         >
           {isLoading ? 'מנתח סרטון ומייצר הצעות, נא להמתין...' : 'נתח סרטון והפק הצעות'}
         </button>
-      </form>
+        </form>
+      )}
     </div>
   );
 };
