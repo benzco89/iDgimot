@@ -331,13 +331,15 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
   if (error) {
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="text-center">
-          <div className="text-red-500 mb-2">❌ {error}</div>
+        <div className="text-center py-8">
+          <div className="text-4xl mb-3">⚠️</div>
+          <h4 className="text-lg font-medium text-gray-700 mb-2">בעיה בטעינת הניתוחים</h4>
+          <p className="text-base text-gray-500 mb-4">נסה לרענן או בדוק את החיבור</p>
           <button
-                            onClick={() => loadAnalyses(selectedDate)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            onClick={() => loadAnalyses(selectedDate)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
           >
-            נסה שוב
+            🔄 נסה שוב
           </button>
         </div>
       </div>
@@ -350,13 +352,9 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-gray-800">
+            <h2 className="text-4xl font-bold text-gray-800">
               ניתוחים יומיים
             </h2>
-            <div className="flex items-center text-sm text-gray-500">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
-              עדכון אחרון: {lastRefreshTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-            </div>
           </div>
           <button
             onClick={() => setIsMinimized(!isMinimized)}
@@ -427,9 +425,9 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
         <div className="space-y-2 max-h-[70vh] overflow-y-auto">
         {analyses.length === 0 ? (
           <div className="text-center text-gray-500 py-8">
-            <div className="text-4xl mb-2">📝</div>
-            <p>אין ניתוחים היום</p>
-            <p className="text-xs">הניתוח הראשון יופיע כאן</p>
+            <div className="text-4xl mb-3">📊</div>
+            <h4 className="text-lg font-medium text-gray-700 mb-2">אין ניתוחים עדיין</h4>
+            <p className="text-base text-gray-500">הניתוחים יופיעו כאן אוטומטיקלי</p>
           </div>
         ) : (
           analyses.map((analysis) => (
@@ -538,6 +536,9 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
         >
           🔄 רענן רשימה
         </button>
+        <p className="text-xs text-gray-400 text-center mt-1">
+          עדכון אחרון: {lastRefreshTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+        </p>
       </div>
 
 

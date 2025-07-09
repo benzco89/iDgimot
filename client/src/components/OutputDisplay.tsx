@@ -339,7 +339,8 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
         {/* Titles */}
         {content.titles && content.titles.length > 0 && (
           <div className="bg-white border border-gray-200 rounded-md p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">הצעות לכותרת</h3>
+            <h3 className="text-2xl font-semibold text-gray-800 mb-2">הצעות לכותרת</h3>
+            <p className="text-base text-gray-500 mb-4">• לחץ "העתק" או "ערוך" לפני השימוש</p>
             <div className="space-y-2">
               {content.titles.map((title, index) => {
                 const key = `title-${index}`;
@@ -371,17 +372,17 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                     ) : (
                       <div>
                       <div className="flex items-start justify-between">
-                        <p className="text-gray-700 flex-1">{index + 1}. {title}</p>
+                        <p className="text-xl text-gray-700 flex-1 leading-relaxed">{index + 1}. {title}</p>
                         <div className="flex gap-1">
                           <button
                             onClick={() => startEditing(key, title)}
-                            className="mr-2 px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600"
+                            className="mr-2 px-4 py-2 text-base bg-orange-500 text-white rounded hover:bg-orange-600"
                           >
                             ערוך
                           </button>
                           <button
                             onClick={() => copyToClipboard(title)}
-                            className={`px-3 py-1 text-xs rounded transition-colors ${
+                            className={`px-4 py-2 text-base rounded transition-colors ${
                               copiedText === title 
                                 ? 'bg-green-500 text-white' 
                                 : 'bg-blue-500 text-white hover:bg-blue-600'
@@ -413,7 +414,8 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
         {/* Descriptions */}
         {content.descriptions && content.descriptions.length > 0 && (
           <div className="bg-white border border-gray-200 rounded-md p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">הצעות לתיאור</h3>
+            <h3 className="text-2xl font-semibold text-gray-800 mb-2">הצעות לתיאור</h3>
+            <p className="text-base text-gray-500 mb-4">• עד 125 תווים ליוטיוב, ניתן לערוך</p>
             <div className="space-y-3">
               {content.descriptions.map((description, index) => {
                 const key = `description-${index}`;
@@ -445,7 +447,7 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                     ) : (
                       <div>
                       <div className="flex items-start justify-between mb-2">
-                        <p className="text-gray-700 flex-1">{description}</p>
+                        <p className="text-lg text-gray-700 flex-1 leading-relaxed">{description}</p>
                         <div className="flex gap-1">
                           <button
                             onClick={() => startEditing(key, description)}
@@ -487,15 +489,16 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
         {/* Thumbnails */}
         {content.thumbnails && content.thumbnails.length > 0 && (
           <div className="bg-white border border-gray-200 rounded-md p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">הצעות לת'מבנייל</h3>
+            <h3 className="text-2xl font-semibold text-gray-800 mb-2">הצעות לת'מבנייל</h3>
+            <p className="text-base text-gray-500 mb-4">• לחץ "הצג תמונה" לראות ת'אמבנייל בפועל</p>
             <div className="space-y-4">
               {content.thumbnails.map((thumbnail, index) => (
                 <div key={index} className="bg-gray-50 p-4 rounded">
                   <div>
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="text-gray-700 font-medium">טיימקוד: {thumbnail.timestamp}</p>
-                      <p className="text-gray-600 text-sm">{thumbnail.description}</p>
+                      <p className="text-lg text-gray-700 font-medium">טיימקוד: {thumbnail.timestamp}</p>
+                      <p className="text-lg text-gray-600 leading-relaxed">{thumbnail.description}</p>
                     </div>
                     <button
                       onClick={() => copyToClipboard(`${thumbnail.timestamp} - ${thumbnail.description}`)}
@@ -507,61 +510,17 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
                     >
                       {copiedText === `${thumbnail.timestamp} - ${thumbnail.description}` ? 'הועתק!' : 'העתק'}
                     </button>
-                    </div>
-                    <FeedbackComponent 
-                      itemKey={`thumbnail-${index}`}
-                      contentType="thumbnail"
-                      contentText={`${thumbnail.timestamp} - ${thumbnail.description}`}
-                      feedbackStates={feedbackStates}
-                      onFeedback={handleFeedback}
-                      onExplanationChange={handleExplanationChange}
-                      onSubmitFeedback={submitFeedback}
-                      onCancelFeedback={cancelFeedback}
-                    />
                   </div>
-                  
-                  {/* Thumbnail extraction */}
-                  <div className="border-t border-gray-200 pt-3">
-                    {!thumbnails[thumbnail.timestamp] && (
-                      <button
-                        onClick={() => extractThumbnail(thumbnail.timestamp)}
-                        disabled={loadingThumbnails[thumbnail.timestamp]}
-                        className={`px-4 py-2 rounded text-sm ${
-                          loadingThumbnails[thumbnail.timestamp]
-                            ? 'bg-gray-400 text-white cursor-not-allowed'
-                            : 'bg-purple-500 text-white hover:bg-purple-600'
-                        }`}
-                      >
-                        {loadingThumbnails[thumbnail.timestamp] ? 'מחלץ תמונה...' : 'הצג תמונת ת\'מבנייל'}
-                      </button>
-                    )}
-                    
-                                         {thumbnails[thumbnail.timestamp] && (
-                        <div className="mt-2">
-                          <div 
-                            className="cursor-pointer max-w-xs"
-                            onClick={() => setSelectedImage(thumbnails[thumbnail.timestamp])}
-                          >
-                            <img 
-                              src={thumbnails[thumbnail.timestamp]} 
-                              alt={`ת'מבנייל בזמן ${thumbnail.timestamp}`}
-                              className="max-w-xs rounded-md shadow-md hover:shadow-lg transition-shadow"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-2">
-                            <p className="text-xs text-gray-500">טיימקוד: {thumbnail.timestamp}</p>
-                            <button
-                              onClick={() => downloadImage(
-                                thumbnails[thumbnail.timestamp], 
-                                `thumbnail-${thumbnail.timestamp.replace(/:/g, '-')}.jpg`
-                              )}
-                              className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700"
-                            >
-                              הורד תמונה
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                  <FeedbackComponent 
+                    itemKey={`thumbnail-${index}`}
+                    contentType="thumbnail"
+                    contentText={`${thumbnail.timestamp} - ${thumbnail.description}`}
+                    feedbackStates={feedbackStates}
+                    onFeedback={handleFeedback}
+                    onExplanationChange={handleExplanationChange}
+                    onSubmitFeedback={submitFeedback}
+                    onCancelFeedback={cancelFeedback}
+                  />
                   </div>
                 </div>
               ))}
@@ -573,91 +532,10 @@ const OutputDisplay: React.FC<OutputDisplayProps> = ({ result, videoFile }) => {
   };
 
   return (
-    <>
-      <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">תוצאות מומלצות</h2>
-        <div className="text-sm text-gray-600 space-y-1">
-          <p><strong>כתב/ת:</strong> {result.reporterName}</p>
-          <p><strong>תאריך:</strong> {result.videoDate}</p>
-          {result.processing && (
-            <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                <div>
-                  <strong className="text-blue-800">מודל שנבחר:</strong>
-                  <div className="text-blue-700">{result.processing.modelName}</div>
-                </div>
-                <div>
-                  <strong className="text-blue-800">גודל קובץ:</strong>
-                  <div className="text-blue-700">{result.processing.videoSize}</div>
-                </div>
-                {result.processing.modelCharacteristics && (
-                  <div className="md:col-span-2">
-                    <strong className="text-blue-800">מאפייני המודל:</strong>
-                    <div className="text-blue-700 text-xs mt-1 grid grid-cols-3 gap-2">
-                      <span>מהירות: {result.processing.modelCharacteristics.speed}</span>
-                      <span>איכות: {result.processing.modelCharacteristics.quality}</span>
-                      <span>עלות: {result.processing.modelCharacteristics.cost}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        {result.content ? (
-          <>
-            {renderStructuredContent(result.content)}
-            
-            {/* Copy entire content button */}
-            <div className="pt-4 border-t border-gray-200">
-              <button
-                onClick={() => copyToClipboard(JSON.stringify(result.content, null, 2))}
-                className={`w-full py-2 px-4 rounded-md transition-colors ${
-                  copiedText === JSON.stringify(result.content, null, 2)
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                {copiedText === JSON.stringify(result.content, null, 2) ? 'כל התוכן הועתק!' : 'העתק את כל התוכן'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="text-center py-8">
-            <p className="text-gray-500">עדיין לא נוצרו הצעות תוכן</p>
-          </div>
-        )}
-      </div>
+    <div className="p-4">
+      {renderStructuredContent(result.content)}
     </div>
-
-    {/* Image Modal */}
-    {selectedImage && (
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
-        onClick={() => setSelectedImage(null)}
-      >
-        <div className="relative max-w-4xl max-h-full p-4">
-          <img 
-            src={selectedImage} 
-            alt="תמונה מוגדלת"
-            className="max-w-full max-h-full rounded-md shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            onClick={() => setSelectedImage(null)}
-            className="absolute top-2 right-2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-200"
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    )}
-  </>
   );
 };
 
-export default OutputDisplay; 
+export default OutputDisplay;

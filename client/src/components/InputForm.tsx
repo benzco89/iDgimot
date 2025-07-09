@@ -119,7 +119,7 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">עוזר התוכן של כאן חדשות</h2>
+        <h2 className="text-4xl font-bold text-gray-800">ניתוח ידני</h2>
         <button
           onClick={() => setIsMinimized(!isMinimized)}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -140,13 +140,13 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
       {!isMinimized && (
         <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label htmlFor="video" className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="video" className="block text-lg font-medium text-gray-700 mb-3">
             העלאת סרטון לניתוח
           </label>
-          <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-gray-400 transition-colors">
-            <div className="space-y-1 text-center">
+          <div className="mt-1 flex justify-center px-6 pt-6 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-gray-400 transition-colors">
+            <div className="space-y-2 text-center">
               <svg
-                className="mx-auto h-12 w-12 text-gray-400"
+                className="mx-auto h-16 w-16 text-gray-400"
                 stroke="currentColor"
                 fill="none"
                 viewBox="0 0 48 48"
@@ -158,7 +158,7 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
                   strokeLinejoin="round"
                 />
               </svg>
-              <div className="flex text-sm text-gray-600">
+              <div className="flex text-lg text-gray-600">
                 <label
                   htmlFor="video"
                   className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500"
@@ -176,11 +176,11 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
                 </label>
                 <p className="pr-1">או גרור ושחרר כאן</p>
               </div>
-              <p className="text-xs text-gray-500">
-                MP4, MOV, AVI עד 100MB
+              <p className="text-base text-gray-500">
+                MP4, MOV, AVI עד 100MB • הניתוח יארך כ-2-3 דקות
               </p>
               {formData.video && (
-                <div className="mt-2 text-sm text-green-600">
+                <div className="mt-3 text-base text-green-600">
                   <p>✓ {formData.video.name}</p>
                   <p>גודל: {formatFileSize(formData.video.size)}</p>
                 </div>
@@ -205,8 +205,8 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="reporterName" className="block text-sm font-medium text-gray-700 mb-2">
-              שם הכתב/ת
+            <label htmlFor="reporterName" className="block text-lg font-medium text-gray-700 mb-3">
+              שם הכתב/ת <span className="text-base text-gray-500">• יופיע בתיאור</span>
             </label>
             <input
               type="text"
@@ -214,15 +214,15 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
               name="reporterName"
               value={formData.reporterName}
               onChange={handleChange}
-              placeholder="הזינו שם הכתב/ת"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="לדוגמה: מיכל רשף"
+              className="w-full px-4 py-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
               required
             />
           </div>
 
           <div>
-            <label htmlFor="videoDate" className="block text-sm font-medium text-gray-700 mb-2">
-              תאריך השידור
+            <label htmlFor="videoDate" className="block text-lg font-medium text-gray-700 mb-3">
+              תאריך השידור <span className="text-base text-gray-500"></span>
             </label>
             <input
               type="text"
@@ -230,8 +230,8 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
               name="videoDate"
               value={formData.videoDate}
               onChange={handleChange}
-              placeholder="לדוגמה: 15 במרץ 2024"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="15 במרץ 2024"
+              className="w-full px-4 py-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
               required
             />
           </div>
@@ -239,8 +239,8 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
 
         {/* Model Selection */}
         <div>
-          <label htmlFor="selectedModel" className="block text-sm font-medium text-gray-700 mb-2">
-            בחירת מודל AI לניתוח
+          <label htmlFor="selectedModel" className="block text-lg font-medium text-gray-700 mb-3">
+            בחירת מודל AI לניתוח <span className="text-base text-gray-500">• Flash = מהיר, Pro = מדויק יותר</span>
           </label>
           {modelsLoading ? (
             <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
@@ -343,7 +343,7 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
         <button
           type="submit"
           disabled={isLoading || !formData.video || !formData.reporterName.trim() || !formData.videoDate.trim()}
-          className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+          className="w-full bg-blue-600 text-white py-5 px-6 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-xl"
         >
           {isLoading ? 'מנתח סרטון ומייצר הצעות, נא להמתין...' : 'נתח סרטון והפק הצעות'}
         </button>

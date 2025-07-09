@@ -149,6 +149,15 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
+// Create thumbnails directory if it doesn't exist
+const thumbnailsDir = path.join(__dirname, 'thumbnails');
+if (!fs.existsSync(thumbnailsDir)) {
+  fs.mkdirSync(thumbnailsDir);
+}
+
+// Serve static files for thumbnails
+app.use('/thumbnails', express.static(thumbnailsDir));
+
 // Configure multer for video uploads with Hebrew filename support
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -203,46 +212,79 @@ if (process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_BASE_ID) {
 
 // Helper function to create the main analysis prompt
 function createAnalysisPrompt(reporterName, videoDate, isAutomaticProcessing = false) {
-  const reporterInfo = isAutomaticProcessing ? 'עיבוד אוטומטי' : reporterName;
-  const reporterInstruction = isAutomaticProcessing 
-    ? 'הוראה חשובה: זהו עיבוד אוטומטי של הקובץ. זהה את שם הכתב/ת מהסרטון ויצור תוכן מקצועי בעברית.'
-    : `🚨 **הוראה קריטית - חובה לציית!** 🚨
-    שם הכתב: ${reporterName}
-    תאריך הכתבה: ${videoDate}
+  // אם לא הועבר תאריך, השתמש בתאריך היום
+  if (!videoDate || videoDate.trim() === '') {
+    videoDate = new Date().toLocaleDateString('he-IL');
+    console.log(`📅 תאריך לא הוכנס - משתמש בתאריך היום: ${videoDate}`);
+  }
+  
+  // הגדר הוראות מיוחדות לעיבוד ידני או אוטומטי
+  let processingInstructions = '';
+  let descriptionsFormat = '';
+  
+  if (!isAutomaticProcessing && reporterName && reporterName.trim() !== '') {
+    // עיבוד ידני עם שם כתב מוגדר
+    processingInstructions = ` הוראה קריטית - חובה לציית! 
+
+שם הכתב שהוקש ידנית: "${reporterName}"
+תאריך הכתבה שהוקש ידנית: "${videoDate}"
+
+ חובה מוחלטת - קרא בעיון! 
+1. אתה חייב להשתמש בדיוק בשם הכתב: "${reporterName}"
+2. אתה חייב להשתמש בדיוק בתאריך: "${videoDate}"  
+3. גם אם הסרטון מכיל שם כתב אחר - התעלם ממנו לחלוטין!
+4. גם אם הסרטון מכיל תאריך אחר - התעלם ממנו לחלוטין!
+5. השתמש רק בפרטים הללו: כתב="${reporterName}", תאריך="${videoDate}"
+
+ זכור: אל תחליף! אל תשנה! השתמש בדיוק בפרטים שרשמתי למעלה! 
+
+ תזכורת חובה: השתמש בכתב="${reporterName}" ותאריך="${videoDate}" בלבד! `;
     
-    ⚠️ אתה חייב להשתמש בפרטים אלה במשפט החובה - לא במה שאתה רואה או שומע בסרטון!
-    ⚠️ גם אם הסרטון מכיל שם כתב אחר או תאריך אחר - התעלם מהם לחלוטין!
-    ⚠️ השתמש אך ורק בפרטים שצוינו כאן: ${reporterName} ו-${videoDate}`;
+    descriptionsFormat = `"כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}."`;
+    
+  } else {
+    // עיבוד אוטומטי - זיהוי כתב מהסרטון
+    processingInstructions = `הוראה חשובה: זהו עיבוד אוטומטי של הקובץ. זהה את שם הכתב/ת מהסרטון ויצור תוכן מקצועי בעברית.
 
-  const descriptionsFormat = isAutomaticProcessing 
-    ? `"כתבתו/כתבתה של [שם הכתב שזיהית] מתוך מהדורת כאן חדשות, ${videoDate}.",
-    "כתבתו/כתבתה של [שם הכתב שזיהית] מתוך מהדורת כאן חדשות, ${videoDate}."`
-    : `"כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.",
-    "כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}."`;;
+ תאריך הכתבה: ${videoDate}`;
+    
+    descriptionsFormat = `"כתבתו/כתבתה של [שם הכתב שזיהית] מתוך מהדורת כאן חדשות, ${videoDate}."`;
+  }
 
+  // בנה את הפרומפט המאוחד
   return `אתה עוזר AI מקצועי שמנתח כתבות חדשותיות של כאן חדשות ומייצר תוכן לפלטפורמות דיגיטליות.
 
-${reporterInstruction}
+${processingInstructions}
 
 נתח את הסרטון החדשותי וצור תוכן מסוגנן ומושך לפלטפורמות דיגיטליות, בהתאם לדרישות הבאות:
 
 ## 🎯 כותרות (4 כותרות יוטיוב) - הכותרות חייבות להיות מדויקות עובדתית עם המידע בכתבה:
 
-⚠️ **עיקרון זהב**: התמקד בנושא המרכזי של הכתבה - לא בפרטים שוליים או תוספות!
-🎪 **מצא את ה"ג'וס"**: זהה את הזווית הכי מעניינת, דרמטית או מפתיעה בכתבה
+ **עיקרון זהב**: התמקד בנושא המרכזי של הכתבה - לא בפרטים שוליים או תוספות!
+ **מצא את ה"ג'וס"**: זהה את הזווית הכי מעניינת, דרמטית או מפתיעה בכתבה
 
-1. **כותרת מרכזית**: התמקד בנושא העיקרי והכי חשוב בכתבה (40-60 תווים)
-2. **כותרת זווית**: הדגש את הזווית הכי מעניינת או השלכות משמעותיות (40-60 תווים)
-3. **כותרת סקרנות**: עורר סקרנות אבל קשור לעיקר - לא לפרטים שוליים (40-60 תווים)
-4. **כותרת ציטוט**: ציטוט חזק מהתוכן שמסכם את המסר המרכזי (40-60 תווים)
+🎪 **טכניקות ליצירת עניין (בהתבסס על עיתונאות מקצועית):**
 
-🚨 **חובה**: כל כותרת צריכה לעסוק בחלק העיקרי והמשמעותי ביותר בכתבה!
+1. **כותרת מרכזית**: התמקד בנושא העיקרי + **מספרים/נתונים** אם יש (מחירים, תאריכים, כמויות)
+2. **כותרת זווית**: הדגש את הזווית הכי מעניינת + **השלכות אישיות** על הציבור הישראלי
+3. **כותרת סקרנות**: עורר סקרנות עם **שאלה פתוחה** או **ניגוד מפתיע** מהכתבה 
+4. **כותרת ציטוט**: **ציטוט דרמטי** מהכתבה או **השוואה מפתיעה**
 
-## 📝 תיאורים (2 תיאורים בלבד):
+💡 **נוסחאות מוכחות לעניין (בחר מה שמתאים לתוכן):**
+- **"X שיעשה Y: Z"** - למשל: "היעד שיחליף את תאילנד: מה זה יעלה?"
+- **"למה X עדיין Y?"** - למשל: "למה יוקר המחיה עדיין עולה?"
+- **"מ-X ל-Y: הסיפור שמאחורי Z"** - למשל: "מחלום לסיוט: הסיפור שמאחורי המחאה"
+- **"X בלבד: איך Y משנה Z"** - למשל: "שבוע בלבד: איך החוק משנה הכל"
+- **"בפעם הראשונה: X"** - למשל: "בפעם הראשונה: ישראלים יוכלו לטוס ל..."
 
-📏 **אורך**: 100-150 מילים (מפורט אבל לא מתוח)
+ **חובה**: כל כותרת צריכה לעסוק בחלק העיקרי והמשמעותי ביותר בכתבה!
+ **חובה**: השתמש במילים פשוטות ובהירות שכל אחד יבין!
 
-📰 **סגנון עיתונאי נקי:**
+##  תיאורים (2 תיאורים בלבד):
+
+ **אורך**: 100-150 מילים (מפורט אבל לא מתוח)
+
+ **סגנון עיתונאי נקי:**
 - התחל ישר עם העובדות המעניינות - בלי "וווים" מלאכותיים
 - סדר כרונולוגי או לוגי של האירועים
 - פרטים ספציפיים: שמות, מקומות, זמנים, מספרים
@@ -250,43 +292,46 @@ ${reporterInstruction}
 - תן לסיפור לדבר בעצמו - הוא צריך להיות מעניין מטבעו
 - בלי קריאות לפעולה מלאכותיות
 
-🎯 **מבנה פשוט:**
+ **מבנה פשוט:**
 1. פתיחה עם העובדה המרכזית
 2. פיתוח עם פרטים רלוונטיים  
 3. סיום עם הקשר או השלכות
 4. המשפט החובה עם שם הכתב
 
-**⚠️ CRITICAL REQUIREMENT - חובה מוחלטת ⚠️**: 
+** CRITICAL REQUIREMENT - חובה מוחלטת **: 
 כל תיאור חייב - ללא יוצא מן הכלל - להסתיים בדיוק במשפט הזה:
 ${descriptionsFormat}
 
-🚨 MANDATORY: אסור בתכלית האיסור לחרוג מהפורמט הזה! 
-🚨 הדרישה הזו קריטית ביותר - אם לא תעקוב אחריה, התוצאה תיפסל!
-🚨 כל תיאור חייב להסתיים במשפט המדויק - ללא שינויים!
+ MANDATORY: אסור בתכלית האיסור לחרוג מהפורמט הזה! 
+ הדרישה הזו קריטית ביותר - אם לא תעקוב אחריה, התוצאה תיפסל!
+ כל תיאור חייב להסתיים במשפט המדויק - ללא שינויים!
 
-🔥 **זכור: גם אם בסרטון מוזכר כתב אחר או תאריך אחר - התעלם מהם לחלוטין!**
-🔥 **השתמש אך ורק בשם הכתב והתאריך שצוינו בתחילת ההוראות!**
+##  תמונות מייצגות (3 תמונות):
 
-## 🖼️ תמונות מייצגות (3 תמונות):
+🎬 **מה עושה ת'אמבנייל שמושך?** בחר רגעים ויזואליים שיש בהם:
+- **רגשות חזקים**: כעס, שמחה, הפתעה, דאגה, רצינות
+- **פעולה דרמטית**: תנועה, מחאות, חגיגות, פגישות חשובות
+- **ניגודים ויזואליים**: עשיר/עני, ישן/חדש, גדול/קטן
+- **אנשים בפעולה**: דיבור בתשוקה, קריאות, שיחות חשובות
 
-✅ **הדרמטיות עובדת!** בחר רגעים ויזואליים שיש בהם:
-- מתח ודרמה
-- רגשות חזקים (כעס, שמחה, הפתעה, רצינות)
-- פעולה או תנועה
-- ביטויי פנים מעניינים
+📸 **סוגי תמונות שעובדות הכי טוב:**
+- **פנים אקספרסיביות**: מישהו שמדבר בהתרגשות או מגיב חזק
+- **תמונות מקום דרמטיות**: נופים מרשימים, מבנים חשובים, קהל גדול
+- **ניגודים**: משהו ישן לצד משהו חדש, או שני דברים מנוגדים
+- **פעולה ברגע**: מישהו במהלך דיבור, הסבר או התגובה חזקה
 
-📍 **3 רגעים:**
-- **פתיחה דרמטית**: רגע חזק מהתחלה שמושך מיד
-- **שיא מרכזי**: הרגע הכי דרמטי או משמעותי בכתבה  
-- **סיום חזק**: רגע שמשאיר רושם או מסכם בעוצמה
+ **3 רגעים (בחר את החזקים ביותר!):**
+- **פתיחה דרמטית**: רגע חזק מהתחלה שמושך מיד (עד דקה ראשונה)
+- **שיא מרכזי**: הרגע הכי דרמטי או משמעותי בכתבה (אמצע)
+- **סיום חזק**: רגע שמשאיר רושם או מסכם בעוצמה (סוף)
 
-📝 **תיאור כל תמונה**: 
-- timestamp מדויק בפורמט MM:SS.XXX (למשל: 01:23.456)
-- תיאור ויזואלי מפורט של הפעולה, ביטויי הפנים, המצב
-- הסבר למה התמונה הזו דרמטית ותמשוך צופים
-- התמקד בפרטים הוויזואליים: מבטים, תנוחות גוף, הבעות
+ **תיאור כל תמונה**: 
+- **Timestamp מדויק**: בפורמט MM:SS.XXX (למשל: 01:23.456)
+- **מה קורה ברגע**: תיאור מדויק של הפעולה, הרגש, המצב
+- **פרטים ויזואליים**: ביטויי פנים, תנוחות גוף, צבעים, תאורה
+- **למה זה יושך**: הסבר קצר למה התמונה הזו תגרום לאנשים ללחוץ
 
-**⚡ דרישות חשובות:**
+** דרישות חשובות:**
 - כל התוכן חייב להיות בעברית בלבד
 - השתמש בשפה עיתונאית מקצועית אך מעניינת  
 - הכותרות צריכות להיות קצרות ומושכות לקליקים
@@ -297,26 +342,45 @@ ${descriptionsFormat}
 
 דבר בעברית טבעית ומקצועית. תן דגש על יצירת תוכן שמושך תשומת לב אבל נשאר אמין וחדשותי.
 
-## ⚠️ אזהרות קריטיות (בהתבסס על פידבק משתמשים):
+##  אזהרות קריטיות (בהתבסס על פידבק משתמשים):
 
-🚫 **אל תעשה:**
+ **אל תעשה:**
 - אל תתמקד בפרטים שוליים או תוספות לא מרכזיות
 - אל תשכח את הנושא העיקרי של הכתבה
 - אל תכתוב תיאורים קצרים (מתחת ל-100 מילים)
 - אל תיצור כותרות על נושאים משניים
-- אל תוסיף "וווים" מלאכותיים או קריאות לפעולה
+- אל תוסיף "הוקים" מלאכותיים או קריאות לפעולה
 
-✅ **תמיד תעשה:**
+ **תמיד תעשה:**
 - זהה מה הנושא המרכזי והכי חשוב
 - מצא את הזווית הכי מעניינת ("הג'וס")
 - כתוב תיאורים ארוכים ומפורטים (100-150 מילים)
 - השתמש בסגנון עיתונאי נקי ופשוט
 - תן לסיפור לדבר בעצמו
 
-🚨🚨🚨 FINAL WARNING - אזהרה אחרונה 🚨🚨🚨
-אם אתה לא תסיים את כל התיאורים במשפט המדויק שדרשתי, התוצאה תיפסל לחלוטין!
+## 🚨 דיוק עובדתי קריטי (פידבק משתמש - בעיה חמורה!):
+
+⚠️ **אסור לשנות עובדות:** 
+- אם הכתבה אומרת "עשוי להיפתח" או "אולי יצטרף" - כתוב בדיוק כך
+- אל תהפוך אפשרויות עתידיות לעובדות וודאיות
+- אל תכתוב "שייפתחו" אם הכתבה אומרת "שעשויים להיפתח"
+- שמור על הדיוק המדויק של המידע בכתבה
+
+✅ **דוגמאות נכונות:**
+- "יעדים שעשויים להיפתח" (לא: "יעדים שייפתחו")
+- "אולי יצטרפו בקרוב" (לא: "יצטרפו בקרוב")
+- "ייתכן שיפותח" (לא: "יפותח")
+
+🎯 **מטרה:** תוכן מעניין ומושך אבל עובדתית מדויק לחלוטין!
+
+ FINAL WARNING - אזהרה אחרונה 
+${!isAutomaticProcessing && reporterName ? 
+  `השתמש רק בכתב: "${reporterName}" ותאריך: "${videoDate}"!
+אל תשתמש בשמות או תאריכים אחרים מהסרטון!
+כל תיאור חייב להסתיים במשפט הקבוע עם הפרטים הללו בלבד!` :
+  `אם אתה לא תסיים את כל התיאורים במשפט המדויק שדרשתי, התוצאה תיפסל לחלוטין!
 כל תיאור חייב להסתיים במשפט הקבוע - זו הדרישה החשובה ביותר!
-אל תשכח - אל תחרוג - אל תשנה!`;
+אל תשכח - אל תחרוג - אל תשנה!`}`;
 }
 
 // Helper function to decode Hebrew filenames
@@ -456,15 +520,15 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
 
     const videoFile = req.file;
 
-    // בדיקת שדות נדרשים
-    if (!videoFile || !reporterName || !videoDate) {
+    // בדיקת שדות נדרשים - רק וידאו ושם כתב הם חובה, תאריך יכול להיות ריק
+    if (!videoFile || !reporterName) {
       console.log('❌ חסרים שדות נדרשים:');
       console.log('- videoFile:', !!videoFile);
       console.log('- reporterName:', !!reporterName);
-      console.log('- videoDate:', !!videoDate);
+      console.log('- videoDate:', videoDate || 'ריק - יוגדר לתאריך היום');
       
       return res.status(400).json({
-        error: 'חסרים שדות נדרשים: video file, reporterName, videoDate'
+        error: 'חסרים שדות נדרשים: video file, reporterName'
       });
     }
 
@@ -505,6 +569,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     console.log('📊 מאפיינים:', availableModels[modelToUse]);
 
     // הגדרת סכמת JSON מובנית למודל
+    console.log(`🔧 JSON Schema מכיל פרמטרים: reporterName="${reporterName}", videoDate="${videoDate}"`);
     const responseSchema = {
       type: "object",
       properties: {
@@ -520,7 +585,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         descriptions: {
           type: "array", 
           items: { type: "string" },
-          description: "2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של [שם הכתב] מתוך מהדורת כאן חדשות, [תאריך].' - ללא חריגות!"
+          description: `2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.' - ללא חריגות!`
         },
         thumbnails: {
           type: "array",
@@ -538,6 +603,9 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       required: ["summary", "titles", "descriptions", "thumbnails"]
     };
 
+    // הדפסת ה-JSON Schema לבדיקה
+    console.log('🔍 JSON Schema descriptions field:', responseSchema.properties.descriptions.description);
+
     // Get the generative model
     const model = genAI.getGenerativeModel({ 
       model: modelToUse
@@ -550,7 +618,24 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     console.log('✅ קובץ וידאו הוכן בהצלחה');
 
     // בניית הפרומפט עם הוראות לניתוח הסרטון
+    console.log('🎯 יוצר פרומפט עם פרמטרים:');
+    console.log('- reporterName:', `"${reporterName}"`);
+    console.log('- videoDate:', `"${videoDate}"`);
+    console.log('- isAutomaticProcessing:', false);
+    
     const prompt = createAnalysisPrompt(reporterName, videoDate, false);
+    
+    // נוסיף בדיקה שהפרומפט מכיל את הפרמטרים הנכונים
+    if (prompt.includes(reporterName) && prompt.includes(videoDate)) {
+      console.log('✅ הפרומפט מכיל את הפרמטרים הנכונים');
+    } else {
+      console.log('❌ אזהרה: הפרומפט לא מכיל את הפרמטרים הנכונים!');
+      console.log('- הפרומפט מכיל reporterName:', prompt.includes(reporterName));
+      console.log('- הפרומפט מכיל videoDate:', prompt.includes(videoDate));
+    }
+    
+    // נציג חלק מהפרומפט לבדיקה
+    console.log('📝 תחילת הפרומפט:', prompt.substring(0, 300) + '...');
 
     console.log('שולח בקשה למודל Gemini עם JSON Schema...');
     
@@ -728,17 +813,27 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
 
     await extractFrameFromVideo(videoFile.path, timestampInSeconds, tempPath);
 
-    // Read the image file and send as response
-    const imageBuffer = fs.readFileSync(tempPath);
+    // Move the thumbnail to the thumbnails directory with a permanent name
+    const thumbnailFileName = `thumbnail_${Date.now()}_${timestamp.replace(/[:.]/g, '_')}.jpg`;
+    const thumbnailPath = path.join(__dirname, 'thumbnails', thumbnailFileName);
     
-    // Clean up files immediately
+    // Ensure thumbnails directory exists
+    if (!fs.existsSync(path.join(__dirname, 'thumbnails'))) {
+      fs.mkdirSync(path.join(__dirname, 'thumbnails'), { recursive: true });
+    }
+    
+    // Move the temp file to permanent location
+    fs.renameSync(tempPath, thumbnailPath);
+    
+    // Clean up uploaded video file
     fs.unlinkSync(videoFile.path);
-    fs.unlinkSync(tempPath);
 
-    // Send image as response
-    res.set('Content-Type', 'image/jpeg');
-    res.set('Content-Disposition', `attachment; filename="thumbnail_${timestamp.replace(/[:.]/g, '_')}.jpg"`);
-    res.send(imageBuffer);
+    // Return success response with thumbnail URL
+    res.json({
+      success: true,
+      thumbnailUrl: `/thumbnails/${thumbnailFileName}`,
+      message: 'ת\'אמבנייל נוצר בהצלחה'
+    });
 
   } catch (error) {
     console.error('❌ שגיאה בחילוץ ת\'מבנייל:', error);
@@ -1361,7 +1456,7 @@ async function analyzeVideoAutomatically(formData) {
         descriptions: {
           type: "array", 
           items: { type: "string" },
-          description: "2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של [שם הכתב] מתוך מהדורת כאן חדשות, [תאריך].' - ללא חריגות!"
+          description: `2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של [שם הכתב שזיהית מהסרטון] מתוך מהדורת כאן חדשות, ${formData.videoDate}.' - ללא חריגות!`
         },
         thumbnails: {
           type: "array",

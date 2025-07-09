@@ -145,20 +145,23 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 font-hebrew">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-2 font-hebrew">
+      <div className="max-w-none mx-auto px-2">
         <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">
+          <h1 className="text-6xl font-bold text-gray-800 mb-4">
             עוזר התוכן של כאן חדשות
           </h1>
-          <p className="text-gray-600">
+          <p className="text-xl text-gray-600 mb-3">
             מנתח סרטונים ומייצר הצעות תוכן מותאמות לערוץ היוטיוב עם מודלי Gemini החדשים
+          </p>
+          <p className="text-base text-gray-400">
+            💡 בחר ניתוח מהיסטוריה או העלה סרטון חדש
           </p>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Right sidebar - 4 columns (רשימה וטופס) */}
-          <div className="lg:col-span-4 space-y-6">
+          {/* Right sidebar - 3 columns (רשימה וטופס) */}
+          <div className="lg:col-span-3 space-y-6">
             {/* Analysis List - ניתוחים יומיים למעלה */}
             <AnalysisList 
               onAnalysisSelect={handleAnalysisSelect}
@@ -182,9 +185,26 @@ function App() {
             />
           </div>
           
-          {/* Results - 8 columns (תוצאות מולצות) */}
-          <div className="lg:col-span-8">
-            {result && <OutputDisplay result={result} videoFile={currentVideoFile || undefined} />}
+          {/* Results - 9 columns (תוצאות מולצות) */}
+          <div className="lg:col-span-9">
+            {result ? (
+              <OutputDisplay result={result} videoFile={currentVideoFile || undefined} />
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                <div className="mb-6">
+                  <svg className="mx-auto h-16 w-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-3xl font-medium text-gray-800 mb-4">
+                  בחר ניתוח מהרשימה או העלה סרטון חדש
+                </h3>
+                <p className="text-xl text-gray-600 leading-relaxed">
+                  הניתוחים היומיים מתעדכנים אוטומטית,<br />
+                  או שתוכל להעלות ולנתח סרטון בעצמך
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
