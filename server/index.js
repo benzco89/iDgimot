@@ -1600,7 +1600,9 @@ function startFileWatcher() {
   fileWatcher = chokidar.watch(watcherSettings.watchFolder, {
     ignored: /[\/\\]\./, // ignore dotfiles
     persistent: true,
-    ignoreInitial: true // Don't process existing files on startup
+    ignoreInitial: true, // Don't process existing files on startup
+    usePolling: true,    // חובה לרשת
+    interval: 300000,    // כל 5 דקות - הגיוני לרשת
   });
   
   fileWatcher.on('add', async (filePath) => {
