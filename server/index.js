@@ -17,6 +17,68 @@ if (process.platform === 'win32') {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// === Logging System ===
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
+// Create log file for today
+function getLogFileName() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `server_${year}-${month}-${day}.log`;
+}
+
+// Smart logging system with rate limiting
+const recentLogs = new Map();
+const LOG_THROTTLE_TIME = 30000; // 30 seconds for repeated logs
+
+function smartLog(level, message, data = {}) {
+  const timestamp = new Date().toISOString();
+  const logKey = `${level}:${message}`;
+  
+  // Check if this is a repeated log
+  if (recentLogs.has(logKey)) {
+    const lastTime = recentLogs.get(logKey);
+    if (Date.now() - lastTime < LOG_THROTTLE_TIME) {
+      return; // Skip repeated log
+    }
+  }
+  
+  recentLogs.set(logKey, Date.now());
+  
+  // Clean old entries periodically
+  if (recentLogs.size > 100) {
+    const cutoff = Date.now() - LOG_THROTTLE_TIME;
+    for (const [key, time] of recentLogs.entries()) {
+      if (time < cutoff) {
+        recentLogs.delete(key);
+      }
+    }
+  }
+  
+  const logEntry = {
+    timestamp,
+    level,
+    message,
+    ...data
+  };
+  
+  // Console output (only important logs)
+  if (level === 'info' || level === 'error' || level === 'warn') {
+    const emoji = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : 'ℹ️';
+    console.log(`${emoji} ${message}`, data.details ? `- ${data.details}` : '');
+  }
+  
+  // File output (all logs)
+  const logLine = JSON.stringify(logEntry) + '\n';
+  const logFile = path.join(logsDir, getLogFileName());
+  fs.appendFileSync(logFile, logLine);
+}
+
 // === Daily Storage System ===
 // Create daily analyses directory if it doesn't exist
 const dailyAnalysesDir = path.join(__dirname, 'daily_analyses');
@@ -63,7 +125,7 @@ function saveDailyAnalyses(analysesData) {
   const filePath = getDailyAnalysesFilePath();
   try {
     fs.writeFileSync(filePath, JSON.stringify(analysesData, null, 2), 'utf8');
-    console.log('✅ ניתוחים יומיים נשמרו:', filePath);
+    smartLog('debug', 'Daily analyses saved', { filePath });
     return true;
   } catch (error) {
     console.error('❌ שגיאה בשמירת ניתוחים יומיים:', error);
@@ -95,7 +157,7 @@ function addAnalysisToDaily(analysisData) {
   dailyData.analyses.push(analysis);
   
   if (saveDailyAnalyses(dailyData)) {
-    console.log('✅ ניתוח נוסף לאחסון יומי:', analysis.id);
+    smartLog('debug', 'Analysis added to daily storage', { analysisId: analysis.id });
     return analysis;
   }
   
@@ -112,16 +174,16 @@ function scheduleDailyReset() {
   const msUntilReset = tomorrow.getTime() - now.getTime();
   
   setTimeout(() => {
-    console.log('🔄 מתחיל איפוס יומי בשעה 02:00');
+    smartLog('info', 'Starting daily reset at 02:00');
     // The reset happens automatically when a new day starts
     // because getCurrentDateString() will return a new date
-    console.log('✅ איפוס יומי הושלם - יום חדש התחיל');
+    smartLog('info', 'Daily reset completed - new day started');
     
     // Schedule next reset
     scheduleDailyReset();
   }, msUntilReset);
   
-  console.log(`⏰ איפוס יומי מתוכנן ל-${tomorrow.toLocaleString('he-IL')}`);
+  smartLog('info', 'Daily reset scheduled', { nextReset: tomorrow.toLocaleString('he-IL') });
 }
 
 // Start daily reset scheduler
@@ -201,9 +263,9 @@ if (process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_BASE_ID) {
     apiKey: process.env.AIRTABLE_API_KEY
   });
   airtableBase = Airtable.base(process.env.AIRTABLE_BASE_ID);
-  console.log('✅ Airtable מוכן לשימוש');
+  smartLog('info', 'Airtable ready for use');
 } else {
-  console.log('⚠️ Airtable לא מוגדר - פידבק יישמר רק בלוגים');
+  smartLog('warn', 'Airtable not configured - feedback will be saved in logs only');
 }
 
 
@@ -213,7 +275,7 @@ function createAnalysisPrompt(reporterName, videoDate, isAutomaticProcessing = f
   // אם לא הועבר תאריך, השתמש בתאריך היום
   if (!videoDate || videoDate.trim() === '') {
     videoDate = new Date().toLocaleDateString('he-IL');
-    console.log(`📅 תאריך לא הוכנס - משתמש בתאריך היום: ${videoDate}`);
+    smartLog('info', 'No date provided - using today date', { videoDate });
   }
   
   // הגדר הוראות מיוחדות לעיבוד ידני או אוטומטי
@@ -413,7 +475,7 @@ function decodeHebrewFilename(filename) {
       // Check if the decoded string looks like Hebrew
       const hebrewRegex = /[\u0590-\u05FF]/;
       if (hebrewRegex.test(decoded) || decoded !== filename) {
-        console.log(`📁 פענוח הצליח: "${filename}" -> "${decoded}"`);
+        smartLog('debug', 'Filename decoded successfully', { original: filename, decoded });
         return decoded;
       }
     } catch (error) {
@@ -421,7 +483,7 @@ function decodeHebrewFilename(filename) {
     }
   }
   
-  console.log(`⚠️ לא ניתן לפענח: "${filename}"`);
+  smartLog('warn', 'Unable to decode filename', { filename });
   return filename;
 }
 
@@ -437,7 +499,7 @@ function fileToGenerativePart(path, mimeType) {
 
 // Helper function to extract frame from video at specific timestamp
 function extractFrameFromVideo(videoPath, timestamp, outputPath) {
-  console.log(`🎬 מנסה לחלץ פריים מ-${videoPath} בזמן ${timestamp} ל-${outputPath}`);
+  smartLog('debug', 'Attempting to extract frame', { videoPath, timestamp, outputPath });
   
   return new Promise((resolve, reject) => {
     // Check if input file exists
@@ -447,7 +509,7 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
       return;
     }
     
-    console.log(`🔄 מתחיל חילוץ פריים עם ffmpeg...`);
+    smartLog('debug', 'Starting frame extraction with ffmpeg');
     
     ffmpeg(videoPath)
       .seekInput(timestamp)
@@ -459,13 +521,13 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
         '-f image2'      // פורמט תמונה
       ])
       .on('start', (commandLine) => {
-        console.log(`🚀 פקודת ffmpeg: ${commandLine}`);
+        smartLog('debug', 'FFmpeg command', { command: commandLine });
       })
       .on('progress', (progress) => {
-        console.log(`📊 התקדמות: ${progress.percent}%`);
+        smartLog('debug', 'Extraction progress', { percent: progress.percent });
       })
       .on('end', () => {
-        console.log(`✅ פריים חולץ בהצלחה באיכות גבוהה: ${timestamp} -> ${outputPath}`);
+        smartLog('info', 'Frame extracted successfully', { timestamp, outputPath });
         resolve(outputPath);
       })
       .on('error', (err) => {
@@ -498,7 +560,7 @@ function formatFileSize(bytes) {
 
 // Endpoint לניתוח סרטון וייצור הצעות תוכן
 app.post('/api/generate', upload.single('video'), async (req, res) => {
-  console.log('=== התחלת בקשה חדשה ===');
+  smartLog('info', 'New analysis request started');
   console.log('req.body:', req.body);
   console.log('req.file:', req.file ? {
     filename: req.file.filename,
@@ -510,28 +572,29 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
   try {
     const { reporterName, videoDate, selectedModel } = req.body;
     
-    console.log('נתונים שחולצו:');
-    console.log('- reporterName:', reporterName);
-    console.log('- videoDate:', videoDate);
-    console.log('- selectedModel:', selectedModel);
-    console.log('- videoFile exists:', !!req.file);
+    smartLog('debug', 'Request data extracted', {
+      reporterName,
+      videoDate,
+      selectedModel,
+      hasVideoFile: !!req.file
+    });
 
     const videoFile = req.file;
 
     // בדיקת שדות נדרשים - רק וידאו ושם כתב הם חובה, תאריך יכול להיות ריק
     if (!videoFile || !reporterName) {
-      console.log('❌ חסרים שדות נדרשים:');
-      console.log('- videoFile:', !!videoFile);
-      console.log('- reporterName:', !!reporterName);
-      console.log('- videoDate:', videoDate || 'ריק - יוגדר לתאריך היום');
+      smartLog('warn', 'Missing required fields', {
+        hasVideoFile: !!videoFile,
+        hasReporterName: !!reporterName,
+        videoDate: videoDate || 'empty - will use today date'
+      });
       
       return res.status(400).json({
         error: 'חסרים שדות נדרשים: video file, reporterName'
       });
     }
 
-    console.log('✅ כל השדות התקבלו בהצלחה');
-    console.log('מתחיל לעבד קובץ:', videoFile.filename);
+    smartLog('info', 'All fields received successfully', { filename: videoFile.filename });
 
     // Available models with their characteristics
     const availableModels = {
@@ -563,11 +626,13 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       ? selectedModel 
       : 'gemini-2.5-pro';
 
-    console.log('🤖 מודל נבחר:', availableModels[modelToUse].name);
-    console.log('📊 מאפיינים:', availableModels[modelToUse]);
+    smartLog('info', 'Model selected', {
+      model: availableModels[modelToUse].name,
+      properties: availableModels[modelToUse]
+    });
 
     // הגדרת סכמת JSON מובנית למודל
-    console.log(`🔧 JSON Schema מכיל פרמטרים: reporterName="${reporterName}", videoDate="${videoDate}"`);
+    smartLog('debug', 'JSON Schema parameters', { reporterName, videoDate });
     const responseSchema = {
       type: "object",
       properties: {
@@ -602,21 +667,21 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     };
 
     // הדפסת ה-JSON Schema לבדיקה
-    console.log('🔍 JSON Schema descriptions field:', responseSchema.properties.descriptions.description);
+    smartLog('debug', 'JSON Schema descriptions field configured', { field: responseSchema.properties.descriptions.description });
 
     // Get the generative model
     const model = genAI.getGenerativeModel({ 
       model: modelToUse
     });
-    console.log('✅ מודל Gemini אותחל בהצלחה');
+    smartLog('info', 'Gemini model initialized successfully');
 
     // Convert the uploaded video to the format needed by Gemini
-    console.log('מכין קובץ וידאו למודל...');
+    smartLog('debug', 'Preparing video file for model');
     const videoPart = fileToGenerativePart(videoFile.path, videoFile.mimetype);
-    console.log('✅ קובץ וידאו הוכן בהצלחה');
+    smartLog('info', 'Video file prepared successfully');
 
     // בניית הפרומפט עם הוראות לניתוח הסרטון
-    console.log('🎯 יוצר פרומפט עם פרמטרים:');
+    smartLog('debug', 'Creating prompt with parameters');
     console.log('- reporterName:', `"${reporterName}"`);
     console.log('- videoDate:', `"${videoDate}"`);
     console.log('- isAutomaticProcessing:', false);
@@ -625,17 +690,17 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     
     // נוסיף בדיקה שהפרומפט מכיל את הפרמטרים הנכונים
     if (prompt.includes(reporterName) && prompt.includes(videoDate)) {
-      console.log('✅ הפרומפט מכיל את הפרמטרים הנכונים');
+      smartLog('debug', 'Prompt contains correct parameters');
     } else {
-      console.log('❌ אזהרה: הפרומפט לא מכיל את הפרמטרים הנכונים!');
-      console.log('- הפרומפט מכיל reporterName:', prompt.includes(reporterName));
-      console.log('- הפרומפט מכיל videoDate:', prompt.includes(videoDate));
+      smartLog('warn', 'Prompt missing parameters warning');
+      smartLog('debug', 'Prompt parameter check', { hasReporterName: prompt.includes(reporterName) });
+      smartLog('debug', 'Prompt parameter check', { hasVideoDate: prompt.includes(videoDate) });
     }
     
     // נציג חלק מהפרומפט לבדיקה
-    console.log('📝 תחילת הפרומפט:', prompt.substring(0, 300) + '...');
+    smartLog('debug', 'Prompt preview', { preview: prompt.substring(0, 300) + '...' });
 
-    console.log('שולח בקשה למודל Gemini עם JSON Schema...');
+    smartLog('info', 'Sending request to Gemini model with JSON Schema');
     
     let parsedContent;
     let attempts = 0;
@@ -644,7 +709,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     // נסה עד 3 פעמים לקבל JSON תקין
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`🔄 ניסיון ${attempts}/${maxAttempts}`);
+      smartLog('debug', 'Analysis attempt', { attempt: attempts, maxAttempts });
       
       try {
         const result = await model.generateContent({
@@ -659,11 +724,11 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         
         const response = await result.response;
         let generatedContent = response.text();
-        console.log('✅ תשובה התקבלה מהמודל, אורך:', generatedContent.length, 'תווים');
+        smartLog('info', 'Response received from model', { contentLength: generatedContent.length });
         
         // אם זה thinking model, חפש את ה-JSON האחרון בתוכן
         if (generatedContent.includes('```json') || generatedContent.includes('{')) {
-          console.log('🧠 זוהה thinking model - מחפש JSON סופי...');
+          smartLog('debug', 'Thinking model detected - searching for final JSON');
           
           // חפש את כל בלוקי ה-JSON בתוכן
           const jsonBlocks = [];
@@ -692,14 +757,14 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
           // קח את ה-JSON האחרון שנמצא
           if (jsonBlocks.length > 0) {
             generatedContent = jsonBlocks[jsonBlocks.length - 1];
-            console.log('✅ נמצא JSON סופי, אורך:', generatedContent.length, 'תווים');
+            smartLog('debug', 'Final JSON found', { contentLength: generatedContent.length });
           }
         }
         
         // פרסור ה-JSON
         parsedContent = JSON.parse(generatedContent);
-        console.log('✅ JSON פורסר בהצלחה');
-        console.log('📊 מבנה התוכן:', {
+        smartLog('info', 'JSON parsed successfully');
+        smartLog('debug', 'Content structure', {
           summary: !!parsedContent.summary,
           titles: parsedContent.titles?.length || 0,
           descriptions: parsedContent.descriptions?.length || 0,
@@ -732,7 +797,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
 
     // Clean up uploaded file after processing
     fs.unlinkSync(videoFile.path);
-    console.log('✅ קובץ זמני נמחק');
+    smartLog('debug', 'Temporary file deleted');
 
     // Prepare processing info
     const processingInfo = {
@@ -745,8 +810,8 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
 
     // Decode Hebrew filename properly
     const decodedFilename = decodeHebrewFilename(videoFile.originalname);
-    console.log('📁 שם קובץ מקורי:', videoFile.originalname);
-    console.log('📁 שם קובץ מפוענח:', decodedFilename);
+    smartLog('debug', 'Original filename', { filename: videoFile.originalname });
+    smartLog('debug', 'Decoded filename', { filename: decodedFilename });
 
     // Save analysis to daily storage
     const savedAnalysis = addAnalysisToDaily({
@@ -761,7 +826,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       fileSize: videoFile.size
     });
 
-    console.log('שולח תשובה ללקוח...');
+    smartLog('debug', 'Sending response to client');
     res.json({
       success: true,
       content: parsedContent,
@@ -770,7 +835,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       processing: processingInfo,
       analysisId: savedAnalysis ? savedAnalysis.id : null // Add analysis ID to response
     });
-    console.log('=== בקשה הושלמה בהצלחה ===');
+    smartLog('info', 'Request completed successfully');
 
   } catch (error) {
     console.error('❌ שגיאה בייצור תוכן:', error);
@@ -790,7 +855,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
 
 // Endpoint לחילוץ תמונת ת'מבנייל (לפי בקשה בלבד, ללא שמירה)
 app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
-  console.log('=== בקשה לחילוץ ת\'מבנייל ===');
+  smartLog('info', 'Thumbnail extraction request started');
   
   try {
     const { timestamp } = req.body;
@@ -802,7 +867,7 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
       });
     }
 
-    console.log('חולץ ת\'מבנייל בטיימקוד:', timestamp);
+    smartLog('debug', 'Extracting thumbnail at timestamp', { timestamp });
 
     // Parse timestamp and extract frame to temp file
     const timestampInSeconds = parseTimestamp(timestamp);
@@ -849,7 +914,7 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
 
   // Endpoint לשמירת פידבק משתמש
 app.post('/api/feedback', async (req, res) => {
-  console.log('=== בקשה לשמירת פידבק ===');
+  smartLog('info', 'Feedback submission request started');
   
   try {
     const { contentType, contentText, feedback, explanation, reporter, videoDate } = req.body;
@@ -861,11 +926,11 @@ app.post('/api/feedback', async (req, res) => {
       });
     }
 
-    console.log('פידבק התקבל:', {
+    smartLog('debug', 'Feedback received', {
       contentType,
-      contentText: contentText.substring(0, 50) + '...',
+      contentTextPreview: contentText.substring(0, 50) + '...',
       feedback,
-      explanation: explanation ? 'יש הסבר' : 'אין הסבר',
+      hasExplanation: !!explanation,
       reporter
     });
 
@@ -898,7 +963,7 @@ app.post('/api/feedback', async (req, res) => {
           }
         ]);
 
-        console.log('✅ פידבק נשמר ב-Airtable:', record[0].getId());
+        smartLog('info', 'Feedback saved to Airtable', { recordId: record[0].getId() });
         
         res.json({
           success: true,
@@ -911,7 +976,7 @@ app.post('/api/feedback', async (req, res) => {
         console.error('❌ שגיאה בשמירה ב-Airtable:', airtableError);
         
         // גם אם יש שגיאה ב-Airtable, עדיין נחזיר הצלחה
-        console.log('✅ פידבק נשמר מקומית:', feedbackData.id);
+        smartLog('info', 'Feedback saved locally', { feedbackId: feedbackData.id });
         
         res.json({
           success: true,
@@ -922,7 +987,7 @@ app.post('/api/feedback', async (req, res) => {
       }
     } else {
       // אין Airtable - רק לוג מקומי
-      console.log('✅ פידבק נשמר מקומית:', feedbackData.id);
+      smartLog('info', 'Feedback saved locally', { feedbackId: feedbackData.id });
       
       res.json({
         success: true,
@@ -979,7 +1044,7 @@ app.get('/api/models', (req, res) => {
 
 // Endpoint לקבלת רשימת תאריכים זמינים
 app.get('/api/available-dates', (req, res) => {
-  console.log('=== בקשה לרשימת תאריכים זמינים ===');
+  smartLog('debug', 'API request: available-dates', { endpoint: '/api/available-dates' });
   
   try {
     const files = fs.readdirSync(dailyAnalysesDir);
@@ -1000,7 +1065,7 @@ app.get('/api/available-dates', (req, res) => {
       })
       .sort((a, b) => b.date.localeCompare(a.date)); // Sort newest first
     
-    console.log(`✅ נמצאו ${dates.length} תאריכים זמינים`);
+    smartLog('debug', 'Available dates found', { count: dates.length });
     
     res.json({
       success: true,
@@ -1019,7 +1084,10 @@ app.get('/api/available-dates', (req, res) => {
 
 // Endpoint לקבלת ניתוחים יומיים (עם תמיכה בתאריך ספציפי)
 app.get('/api/daily-analyses', (req, res) => {
-  console.log('=== בקשה לקבלת ניתוחים יומיים ===');
+  smartLog('debug', 'API request: daily-analyses', { 
+    endpoint: '/api/daily-analyses',
+    requestedDate: req.query.date 
+  });
   
   const requestedDate = req.query.date; // Get date from query parameter
   
@@ -1035,9 +1103,9 @@ app.get('/api/daily-analyses', (req, res) => {
       if (fs.existsSync(filePath)) {
         const data = fs.readFileSync(filePath, 'utf8');
         dailyData = JSON.parse(data);
-        console.log(`✅ נטענו ניתוחים מתאריך: ${requestedDate}`);
+        smartLog('debug', 'Daily analyses loaded', { date: requestedDate });
       } else {
-        console.log(`⚠️ לא נמצא קובץ לתאריך: ${requestedDate}`);
+        smartLog('warn', 'Daily analyses file not found', { requestedDate });
         return res.json({
           success: true,
           date: requestedDate,
@@ -1054,7 +1122,10 @@ app.get('/api/daily-analyses', (req, res) => {
       targetDate = dailyData.date;
     }
     
-    console.log(`✅ נמצאו ${dailyData.analyses.length} ניתוחים ליום ${targetDate}`);
+    smartLog('debug', 'Analyses found for date', { 
+      count: dailyData.analyses.length, 
+      date: targetDate 
+    });
 
     // Sort analyses by timestamp - newest first (reverse chronological order)
     const sortedAnalyses = [...dailyData.analyses].sort((a, b) => {
@@ -1080,7 +1151,7 @@ app.get('/api/daily-analyses', (req, res) => {
 
 // Endpoint לעדכון סטטוס ניתוח
 app.put('/api/analysis/:id/status', (req, res) => {
-  console.log('=== בקשה לעדכון סטטוס ניתוח ===');
+  smartLog('info', 'Analysis status update request started');
   
   try {
     const { id } = req.params;
@@ -1112,7 +1183,7 @@ app.put('/api/analysis/:id/status', (req, res) => {
     dailyData.analyses[analysisIndex].completedAt = status === 'completed' ? new Date().toISOString() : null;
     
     if (saveDailyAnalyses(dailyData)) {
-      console.log(`✅ סטטוס ניתוח עודכן: ${id} -> ${status}`);
+      smartLog('info', 'Analysis status updated', { analysisId: id, newStatus: status });
       
       res.json({
         success: true,
@@ -1135,7 +1206,7 @@ app.put('/api/analysis/:id/status', (req, res) => {
 
 // Endpoint למחיקת ניתוח
 app.delete('/api/analysis/:id', (req, res) => {
-  console.log('=== בקשה למחיקת ניתוח ===');
+  smartLog('info', 'Analysis deletion request started');
   
   try {
     const { id } = req.params;
@@ -1186,7 +1257,7 @@ app.delete('/api/analysis/:id', (req, res) => {
     // Save the updated file
     try {
       fs.writeFileSync(targetFile.filePath, JSON.stringify(targetFile.dailyData, null, 2), 'utf8');
-      console.log(`✅ ניתוח נמחק: ${id} (${deletedAnalysis.reporterName})`);
+      smartLog('info', 'Analysis deleted', { analysisId: id, reporterName: deletedAnalysis.reporterName });
       
       res.json({
         success: true,
@@ -1232,10 +1303,10 @@ function loadWatcherSettings() {
     if (fs.existsSync(settingsFile)) {
       const data = fs.readFileSync(settingsFile, 'utf8');
       watcherSettings = { ...watcherSettings, ...JSON.parse(data) };
-      console.log('✅ הגדרות מעקב קבצים נטענו:', watcherSettings.watchFolder);
+      smartLog('info', 'Watcher settings loaded', { folder: watcherSettings.watchFolder });
     }
   } catch (error) {
-    console.error('❌ שגיאה בטעינת הגדרות מעקב:', error);
+    smartLog('error', 'Failed to load watcher settings', { error: error.message });
   }
 }
 
@@ -1243,7 +1314,7 @@ function loadWatcherSettings() {
 function saveWatcherSettings() {
   try {
     fs.writeFileSync(settingsFile, JSON.stringify(watcherSettings, null, 2));
-    console.log('✅ הגדרות מעקב נשמרו');
+    smartLog('info', 'Watcher settings saved');
     return true;
   } catch (error) {
     console.error('❌ שגיאה בשמירת הגדרות:', error);
@@ -1287,7 +1358,7 @@ function logFileProcessing(filename, filePath, decision, reason) {
   
   try {
     fs.writeFileSync(logFilePath, JSON.stringify(logs, null, 2), 'utf8');
-    console.log(`📝 לוג נשמר: ${decision} - ${filename} - ${reason}`);
+    smartLog('debug', 'Watcher log saved', { decision, filename, reason });
   } catch (error) {
     console.error('❌ שגיאה בשמירת לוג:', error);
   }
@@ -1334,10 +1405,10 @@ function shouldProcessFile(filename, filePath) {
         
         if (isLongEnough) {
           logFileProcessing(filename, filePath, 'processed', `אורך מתאים: ${Math.round(duration)}s`);
-          console.log(`📹 קובץ ${filename}: אורך ${duration}s, מתאים: ${isLongEnough}`);
+          smartLog('debug', 'File duration check', { filename, duration, isLongEnough });
         } else {
           logFileProcessing(filename, filePath, 'skipped', `אורך קצר מדי: ${Math.round(duration)}s (נדרש >60s)`);
-          console.log(`📹 קובץ ${filename}: אורך ${duration}s, קצר מדי`);
+          smartLog('debug', 'File too short', { filename, duration });
         }
         
         resolve(isLongEnough);
@@ -1357,7 +1428,7 @@ async function processVideoFile(filePath, filename) {
   currentlyProcessing.add(filename);
   
   try {
-    console.log(`🤖 מתחיל עיבוד אוטומטי של: ${filename}`);
+    smartLog('info', 'Automatic processing started', { filename });
     
 
     
@@ -1378,16 +1449,16 @@ async function processVideoFile(filePath, filename) {
     };
     
     // Process using existing analysis logic
-    console.log('📊 שולח לניתוח אוטומטי...');
+    smartLog('info', 'Sending for automatic analysis');
     const result = await analyzeVideoAutomatically(formData);
     
     if (result.success) {
-      console.log(`✅ עיבוד אוטומטי הושלם: ${filename}`);
+      smartLog('info', 'Automatic processing completed', { filename });
       
       // Mark as processed only after successful analysis
       watcherSettings.processedFiles.push(filename);
       saveWatcherSettings();
-      console.log(`📊 קובץ נוסף לרשימת המעובדים: ${filename}`);
+      smartLog('debug', 'File added to processed list', { filename });
       
       // Add to daily analyses
       const analysisData = {
@@ -1406,7 +1477,7 @@ async function processVideoFile(filePath, filename) {
 
 
       addAnalysisToDaily(analysisData);
-      console.log(`💾 ניתוח נשמר בקובץ היומי`);
+      smartLog('info', 'Analysis saved to daily file');
       
     } else {
       console.error(`❌ עיבוד אוטומטי נכשל: ${result.error}`);
@@ -1419,7 +1490,7 @@ async function processVideoFile(filePath, filename) {
   } finally {
     // Remove from currently processing list
     currentlyProcessing.delete(filename);
-    console.log(`🔄 הסרה מרשימת עיבוד: ${filename}`);
+    smartLog('debug', 'File removed from processing list', { filename });
   }
 }
 
@@ -1472,7 +1543,7 @@ async function analyzeVideoAutomatically(formData) {
       required: ["summary", "titles", "descriptions", "thumbnails"]
     };
     
-    console.log('שולח בקשה למודל Gemini עם JSON Schema...');
+    smartLog('info', 'Sending request to Gemini model with JSON Schema');
     
     let parsedContent;
     let attempts = 0;
@@ -1481,7 +1552,7 @@ async function analyzeVideoAutomatically(formData) {
     // נסה עד 3 פעמים לקבל JSON תקין
     while (attempts < maxAttempts) {
       attempts++;
-      console.log(`🔄 ניסיון ${attempts}/${maxAttempts}`);
+      smartLog('debug', 'Analysis attempt', { attempt: attempts, maxAttempts });
       
       try {
         const result = await model.generateContent({
@@ -1496,11 +1567,11 @@ async function analyzeVideoAutomatically(formData) {
         
         const response = await result.response;
         let generatedContent = response.text();
-        console.log('✅ תשובה התקבלה מהמודל, אורך:', generatedContent.length, 'תווים');
+        smartLog('info', 'Response received from model', { contentLength: generatedContent.length });
         
         // אם זה thinking model, חפש את ה-JSON האחרון בתוכן
         if (generatedContent.includes('```json') || generatedContent.includes('{')) {
-          console.log('🧠 זוהה thinking model - מחפש JSON סופי...');
+          smartLog('debug', 'Thinking model detected - searching for final JSON');
           
           // חפש את כל בלוקי ה-JSON בתוכן
           const jsonBlocks = [];
@@ -1527,15 +1598,15 @@ async function analyzeVideoAutomatically(formData) {
           }
           
           if (jsonBlocks.length > 0) {
-            console.log(`✅ נמצא JSON סופי, אורך: ${jsonBlocks[jsonBlocks.length - 1].length} תווים`);
+            smartLog('debug', 'Final JSON found in automatic analysis', { contentLength: jsonBlocks[jsonBlocks.length - 1].length });
             generatedContent = jsonBlocks[jsonBlocks.length - 1]; // קח את האחרון
           }
         }
         
         // נסה לפרסר את ה-JSON
         parsedContent = JSON.parse(generatedContent);
-        console.log('✅ JSON פורסר בהצלחה');
-        console.log('📊 מבנה התוכן:', {
+        smartLog('info', 'JSON parsed successfully');
+        smartLog('debug', 'Content structure', {
           summary: !!parsedContent.summary,
           titles: parsedContent.titles?.length || 0,
           descriptions: parsedContent.descriptions?.length || 0,
@@ -1545,7 +1616,7 @@ async function analyzeVideoAutomatically(formData) {
         break; // הצלחנו - צא מהלולאה
         
       } catch (error) {
-        console.log(`❌ שגיאה בניסיון ${attempts}:`, error.message);
+        smartLog('error', 'Analysis attempt failed', { attempt: attempts, error: error.message });
         if (attempts >= maxAttempts) {
           throw new Error(`כשל בכל הניסיונות לקבל JSON תקין: ${error.message}`);
         }
@@ -1579,7 +1650,7 @@ let fileWatcher = null;
 // Start file watcher
 function startFileWatcher() {
   if (!watcherSettings.watchFolder || !watcherSettings.isEnabled) {
-    console.log('⚠️ מעקב קבצים לא מופעל או לא מוגדר נתיב');
+    smartLog('warn', 'File watcher not enabled or path not configured');
     return;
   }
   
@@ -1593,7 +1664,7 @@ function startFileWatcher() {
     fileWatcher.close();
   }
   
-  console.log(`👁️ מתחיל מעקב אחר תיקייה: ${watcherSettings.watchFolder}`);
+  smartLog('info', 'File watcher started', { folder: watcherSettings.watchFolder });
   
   fileWatcher = chokidar.watch(watcherSettings.watchFolder, {
     ignored: /[\/\\]\./, // ignore dotfiles
@@ -1605,21 +1676,21 @@ function startFileWatcher() {
   
   fileWatcher.on('add', async (filePath) => {
     const filename = path.basename(filePath);
-    console.log(`📁 קובץ חדש זוהה: ${filename}`);
+    smartLog('info', 'New file detected', { filename, path: filePath });
     
     // Check if file meets criteria
     const shouldProcess = await shouldProcessFile(filename, filePath);
     
     if (shouldProcess) {
-      console.log(`✅ קובץ עומד בקריטריונים, מתחיל עיבוד: ${filename}`);
+      smartLog('info', 'File processing started', { filename });
       await processVideoFile(filePath, filename);
     } else {
-      console.log(`⏭️ קובץ לא עומד בקריטריונים או כבר עובד: ${filename}`);
+      smartLog('debug', 'File skipped', { filename, reason: 'does not meet criteria' });
     }
   });
   
   fileWatcher.on('error', (error) => {
-    console.error('❌ שגיאה במעקב קבצים:', error);
+    smartLog('error', 'File watcher error', { error: error.message });
   });
 }
 
@@ -1628,7 +1699,7 @@ function stopFileWatcher() {
   if (fileWatcher) {
     fileWatcher.close();
     fileWatcher = null;
-    console.log('🛑 מעקב קבצים הופסק');
+    smartLog('info', 'File watcher stopped');
   }
 }
 
@@ -1803,9 +1874,15 @@ app.use((req, res, next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 השרת פועל על פורט ${PORT}`);
-  console.log('🏠 גישה מקומית: http://localhost:' + PORT);
-  console.log('🏢 גישה ברשת: http://[YOUR_IP]:' + PORT);
-  console.log('מוכן לקבל העלאות סרטונים וניתוח עם Gemini Pro');
-  console.log('API Key מוגדר:', !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
+  smartLog('info', 'Server started successfully', {
+    port: PORT,
+    localUrl: `http://localhost:${PORT}`,
+    networkUrl: `http://[YOUR_IP]:${PORT}`,
+    apiKeyConfigured: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)
+  });
+  
+  console.log(`🌐 Server running on port ${PORT}`);
+  console.log(`🏠 Local: http://localhost:${PORT}`);
+  console.log(`🏢 Network: http://[YOUR_IP]:${PORT}`);
+  console.log(`🤖 Gemini API: ${!!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) ? 'Configured' : 'Missing'}`);
 }); 
