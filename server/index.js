@@ -138,10 +138,8 @@ app.get('/test', (req, res) => {
   res.json({ message: 'Test endpoint works!' });
 });
 
-// Serve static files from the React app (for production)
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
-}
+// Serve static files from the React app (always for simplicity)
+app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -1794,17 +1792,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'השרת פועל תקין' });
 });
 
-// Catch-all handler: serve React app for any non-API routes (production only)
-if (process.env.NODE_ENV === 'production') {
-  app.get('/*', (req, res) => {
-    // Only serve React app for non-API routes
-    if (!req.path.startsWith('/api/')) {
-      res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-    } else {
-      res.status(404).json({ error: 'API route not found' });
-    }
-  });
-}
+// Catch-all handler: serve React app for any non-API routes  
+app.use((req, res, next) => {
+  // If it's an API route, let it fall through to 404
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API route not found' });
+  }
+  // Otherwise serve the React app
+  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 השרת פועל על פורט ${PORT}`);
