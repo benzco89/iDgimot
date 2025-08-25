@@ -110,7 +110,7 @@ function loadDailyAnalyses() {
       return JSON.parse(data);
     }
   } catch (error) {
-    console.error('❌ שגיאה בטעינת ניתוחים יומיים:', error);
+    smartLog('error', 'Failed to load daily analyses', { error: error.message });
   }
   
   // Return default structure if file doesn't exist or error
@@ -128,7 +128,7 @@ function saveDailyAnalyses(analysesData) {
     smartLog('debug', 'Daily analyses saved', { filePath });
     return true;
   } catch (error) {
-    console.error('❌ שגיאה בשמירת ניתוחים יומיים:', error);
+    smartLog('error', 'Failed to save daily analyses', { error: error.message });
     return false;
   }
 }
@@ -504,7 +504,7 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
   return new Promise((resolve, reject) => {
     // Check if input file exists
     if (!fs.existsSync(videoPath)) {
-      console.error(`❌ קובץ הוידאו לא נמצא: ${videoPath}`);
+      smartLog('error', 'Video file not found', { videoPath });
       reject(new Error(`קובץ הוידאו לא נמצא: ${videoPath}`));
       return;
     }
@@ -531,8 +531,8 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
         resolve(outputPath);
       })
       .on('error', (err) => {
-        console.error(`❌ שגיאה בחילוץ פריים: ${err.message}`);
-        console.error(`❌ פרטי השגיאה המלאים:`, err);
+        smartLog('error', 'Frame extraction failed', { error: err.message });
+        smartLog('error', 'Full error details', { error: err });
         reject(err);
       })
       .run();
@@ -773,7 +773,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         break;
         
       } catch (error) {
-        console.error(`❌ שגיאה בניסיון ${attempts}:`, error.message);
+        smartLog('error', 'Manual analysis attempt failed', { attempt: attempts, error: error.message });
         if (attempts === maxAttempts) {
           // אם כל הניסיונות נכשלו, החזר תוכן בסיסי
           parsedContent = { 
@@ -838,7 +838,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     smartLog('info', 'Request completed successfully');
 
   } catch (error) {
-    console.error('❌ שגיאה בייצור תוכן:', error);
+    smartLog('error', 'Content generation failed', { error: error.message });
     console.error('Stack trace:', error.stack);
     
     // Clean up uploaded file if error occurs
@@ -899,7 +899,7 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ שגיאה בחילוץ ת\'מבנייל:', error);
+    smartLog('error', 'Thumbnail extraction failed', { error: error.message });
     
     // Clean up on error
     if (req.file && fs.existsSync(req.file.path)) {
@@ -973,7 +973,7 @@ app.post('/api/feedback', async (req, res) => {
         });
 
       } catch (airtableError) {
-        console.error('❌ שגיאה בשמירה ב-Airtable:', airtableError);
+        smartLog('error', 'Airtable save failed', { error: airtableError.message });
         
         // גם אם יש שגיאה ב-Airtable, עדיין נחזיר הצלחה
         smartLog('info', 'Feedback saved locally', { feedbackId: feedbackData.id });
@@ -997,7 +997,7 @@ app.post('/api/feedback', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('❌ שגיאה בשמירת פידבק:', error);
+    smartLog('error', 'Feedback save failed', { error: error.message });
     
     res.status(500).json({
       error: 'שגיאה בשמירת פידבק: ' + error.message
@@ -1074,7 +1074,7 @@ app.get('/api/available-dates', (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ שגיאה בקבלת תאריכים:', error);
+    smartLog('error', 'Failed to get available dates', { error: error.message });
     res.status(500).json({
       success: false,
       error: 'שגיאה בקבלת רשימת התאריכים'
@@ -1142,7 +1142,7 @@ app.get('/api/daily-analyses', (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ שגיאה בקבלת ניתוחים יומיים:', error);
+    smartLog('error', 'Failed to get daily analyses', { error: error.message });
     res.status(500).json({
       error: 'שגיאה בקבלת ניתוחים יומיים: ' + error.message
     });
@@ -1197,7 +1197,7 @@ app.put('/api/analysis/:id/status', (req, res) => {
     }
     
   } catch (error) {
-    console.error('❌ שגיאה בעדכון סטטוס ניתוח:', error);
+    smartLog('error', 'Analysis status update failed', { error: error.message });
     res.status(500).json({
       error: 'שגיאה בעדכון סטטוס ניתוח: ' + error.message
     });
@@ -1239,7 +1239,7 @@ app.delete('/api/analysis/:id', (req, res) => {
               break;
             }
           } catch (error) {
-            console.warn(`⚠️ שגיאה בקריאת קובץ ${file}:`, error);
+            smartLog('warn', 'File read error', { file, error: error.message });
           }
         }
       }
@@ -1269,14 +1269,14 @@ app.delete('/api/analysis/:id', (req, res) => {
         }
       });
     } catch (saveError) {
-      console.error('❌ שגיאה בשמירת קובץ לאחר מחיקה:', saveError);
+      smartLog('error', 'File save after deletion failed', { error: saveError.message });
       res.status(500).json({
         error: 'שגיאה בשמירת הקובץ לאחר מחיקה'
       });
     }
     
   } catch (error) {
-    console.error('❌ שגיאה במחיקת ניתוח:', error);
+    smartLog('error', 'Analysis deletion failed', { error: error.message });
     res.status(500).json({
       error: 'שגיאה במחיקת ניתוח: ' + error.message
     });
@@ -1317,7 +1317,7 @@ function saveWatcherSettings() {
     smartLog('info', 'Watcher settings saved');
     return true;
   } catch (error) {
-    console.error('❌ שגיאה בשמירת הגדרות:', error);
+    smartLog('error', 'Settings save failed', { error: error.message });
     return false;
   }
 }
@@ -1351,7 +1351,7 @@ function logFileProcessing(filename, filePath, decision, reason) {
       logs = JSON.parse(data);
     }
   } catch (error) {
-    console.warn('⚠️ שגיאה בטעינת לוגים קיימים:', error);
+    smartLog('warn', 'Failed to load existing logs', { error: error.message });
   }
   
   logs.push(logEntry);
@@ -1360,7 +1360,7 @@ function logFileProcessing(filename, filePath, decision, reason) {
     fs.writeFileSync(logFilePath, JSON.stringify(logs, null, 2), 'utf8');
     smartLog('debug', 'Watcher log saved', { decision, filename, reason });
   } catch (error) {
-    console.error('❌ שגיאה בשמירת לוג:', error);
+    smartLog('error', 'Log save failed', { error: error.message });
   }
 }
 
@@ -1394,7 +1394,7 @@ function shouldProcessFile(filename, filePath) {
     return new Promise((resolve) => {
       ffmpeg.ffprobe(filePath, (err, metadata) => {
         if (err) {
-          console.error('❌ שגיאה בבדיקת אורך הסרטון:', err);
+          smartLog('error', 'Video duration check failed', { error: err.message });
           logFileProcessing(filename, filePath, 'error', `שגיאה בבדיקת מטאדטה: ${err.message}`);
           resolve(false);
           return;
@@ -1416,7 +1416,7 @@ function shouldProcessFile(filename, filePath) {
     });
     
   } catch (error) {
-    console.error('❌ שגיאה בבדיקת קובץ:', error);
+    smartLog('error', 'File check failed', { error: error.message });
     logFileProcessing(filename, filePath, 'error', `שגיאה כללית: ${error.message}`);
     return false;
   }
@@ -1480,12 +1480,12 @@ async function processVideoFile(filePath, filename) {
       smartLog('info', 'Analysis saved to daily file');
       
     } else {
-      console.error(`❌ עיבוד אוטומטי נכשל: ${result.error}`);
+      smartLog('error', 'Automatic processing failed', { error: result.error });
       // Don't add to processed files if analysis failed
     }
     
   } catch (error) {
-    console.error(`❌ שגיאה בעיבוד אוטומטי של ${filename}:`, error);
+    smartLog('error', 'Automatic file processing failed', { filename, error: error.message });
     // Don't add to processed files if error occurred
   } finally {
     // Remove from currently processing list
@@ -1634,7 +1634,7 @@ async function analyzeVideoAutomatically(formData) {
     };
     
   } catch (error) {
-    console.error('❌ שגיאה בניתוח אוטומטי:', error);
+    smartLog('error', 'Automatic analysis failed', { error: error.message });
     return {
       success: false,
       error: error.message
@@ -1655,7 +1655,7 @@ function startFileWatcher() {
   }
   
   if (!fs.existsSync(watcherSettings.watchFolder)) {
-    console.error('❌ תיקיית מעקב לא קיימת:', watcherSettings.watchFolder);
+    smartLog('error', 'Watch folder does not exist', { folder: watcherSettings.watchFolder });
     return;
   }
   
@@ -1763,7 +1763,7 @@ app.post('/api/watcher/settings', (req, res) => {
     }
     
   } catch (error) {
-    console.error('❌ שגיאה בעדכון הגדרות מעקב:', error);
+    smartLog('error', 'Watcher settings update failed', { error: error.message });
     res.status(500).json({
       success: false,
       error: 'שגיאה בעדכון הגדרות: ' + error.message
@@ -1839,7 +1839,7 @@ app.get('/api/watcher/logs', (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ שגיאה בטעינת לוגים:', error);
+    smartLog('error', 'Failed to load logs', { error: error.message });
     res.status(500).json({
       success: false,
       error: 'שגיאה בטעינת לוגים: ' + error.message

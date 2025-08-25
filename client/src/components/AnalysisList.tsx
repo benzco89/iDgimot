@@ -276,15 +276,14 @@ const AnalysisList: React.FC<AnalysisListProps> = ({
     }
   }, [selectedDate, refreshTrigger]);
 
-  // Auto-refresh every 15 seconds when there are pending analyses
+  // Auto-refresh every 3-5 minutes to avoid disrupting user experience
   useEffect(() => {
     const interval = setInterval(() => {
       if (selectedDate) {
-        // More frequent refresh if there are pending analyses
-        const refreshInterval = stats.pendingCount > 0 ? 15000 : 30000;
+        // Refresh every 3 minutes if there are pending analyses, every 5 minutes if not
         loadAnalyses(selectedDate);
       }
-    }, stats.pendingCount > 0 ? 15000 : 30000);
+    }, stats.pendingCount > 0 ? 180000 : 300000); // 3 minutes or 5 minutes
     return () => clearInterval(interval);
   }, [selectedDate, stats.pendingCount]);
 
