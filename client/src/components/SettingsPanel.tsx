@@ -89,7 +89,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
 
   const loadModels = async () => {
     try {
-      const response = await fetch('/api/models');
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/models` : '/api/models';
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (data.success) {
@@ -104,7 +106,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/watcher/settings');
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/watcher/settings` : '/api/watcher/settings';
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (data.success) {
@@ -119,7 +123,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
 
   const loadStatus = async () => {
     try {
-      const response = await fetch('/api/watcher/status');
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/watcher/status` : '/api/watcher/status';
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (data.success) {
@@ -132,7 +138,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
 
   const loadLogs = async () => {
     try {
-      const response = await fetch('/api/watcher/logs');
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/watcher/logs` : '/api/watcher/logs';
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (data.success) {
@@ -146,7 +154,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
   const saveSettings = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/watcher/settings', {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/watcher/settings` : '/api/watcher/settings';
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,7 +193,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
   const toggleWatcher = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/watcher/settings', {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/watcher/settings` : '/api/watcher/settings';
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -223,7 +235,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
     setApiTestMessage('בודק את מפתח ה-API...');
     
     try {
-      const response = await fetch('/api/test-api-key');
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/test-api-key` : '/api/test-api-key';
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (data.success) {
@@ -251,7 +265,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
     setGemini3TestMessage('בודק את Gemini 3.0...');
     
     try {
-      const response = await fetch('/api/test-gemini3');
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/test-gemini3` : '/api/test-gemini3';
+      const response = await fetch(apiUrl);
       const data = await response.json();
       
       if (data.success) {

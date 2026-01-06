@@ -196,13 +196,22 @@ scheduleDailyReset();
 app.use(cors());
 app.use(express.json());
 
+// Debug logging middleware - log only important requests
+app.use((req, res, next) => {
+  // Don't log repetitive GET requests to watcher endpoints
+  const skipPaths = ['/api/watcher/status', '/api/watcher/logs'];
+  const shouldSkip = req.method === 'GET' && skipPaths.includes(req.path);
+  
+  if (!shouldSkip) {
+    console.log(`📥 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  }
+  next();
+});
+
 // Simple test endpoint for debugging
 app.get('/test', (req, res) => {
   res.json({ message: 'Test endpoint works!' });
 });
-
-// Serve static files from the React app (always for simplicity)
-app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -241,7 +250,7 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024 // 100MB limit
+    fileSize: 250 * 1024 * 1024 // 250MB limit
   },
   fileFilter: (req, file, cb) => {
     // Accept video files
@@ -606,11 +615,11 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         quality: 'מקסימלי',
         cost: 'גבוה'
       },
-      'gemini-2.5-flash': {
-        name: 'Gemini 2.5 Flash',
-        description: 'מאוזן - מהיר ויעיל',
+      'gemini-3-flash-preview': {
+        name: 'Gemini 3.0 Flash',
+        description: 'מאוזן - מהיר, יעיל ומתקדם',
         speed: 'מהיר',
-        quality: 'גבוה',
+        quality: 'גבוה מאוד',
         cost: 'בינוני'
       },
       'gemini-2.5-flash-lite-preview-06-17': {
@@ -1028,11 +1037,11 @@ app.get('/api/models', (req, res) => {
       recommended: 'לכתבות מורכבות ומפורטות (ברירת מחדל)',
       default: true
     },
-    'gemini-2.5-flash': {
-      name: 'Gemini 2.5 Flash',
-      description: 'מאוזן - מהיר ויעיל',
+    'gemini-3-flash-preview': {
+      name: 'Gemini 3.0 Flash',
+      description: 'מאוזן - מהיר, יעיל ומתקדם',
       speed: 'מהיר',
-      quality: 'גבוה',
+      quality: 'גבוה מאוד',
       cost: 'בינוני',
       recommended: 'למרבית הכתבות'
     },
@@ -1993,6 +2002,9 @@ app.get('/api/test-gemini3', async (req, res) => {
 });
 
 // === End API Key Test Endpoints ===
+
+// Serve static files from the React app (must be after all API routes)
+app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // Catch-all handler: serve React app for any non-API routes  
 app.use((req, res, next) => {

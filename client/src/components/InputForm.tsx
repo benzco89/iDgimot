@@ -45,8 +45,10 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        console.log('🔄 מנסה לטעון מודלים מ-/api/models');
-        const response = await fetch('/api/models');
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
+        const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/models` : '/api/models';
+        console.log('🔄 מנסה לטעון מודלים מ-', apiUrl);
+        const response = await fetch(apiUrl);
         console.log('📡 תשובה התקבלה:', response.status, response.statusText);
         
         if (!response.ok) {
