@@ -6,6 +6,7 @@ const path = require('path');
 const chokidar = require('chokidar');
 require('dotenv').config();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI: GoogleGenAI_V2 } = require('@google/genai');
 const ffmpeg = require('fluent-ffmpeg');
 const Airtable = require('airtable');
 
@@ -39,7 +40,7 @@ const LOG_THROTTLE_TIME = 30000; // 30 seconds for repeated logs
 function smartLog(level, message, data = {}) {
   const timestamp = new Date().toISOString();
   const logKey = `${level}:${message}`;
-  
+
   // Check if this is a repeated log
   if (recentLogs.has(logKey)) {
     const lastTime = recentLogs.get(logKey);
@@ -47,9 +48,9 @@ function smartLog(level, message, data = {}) {
       return; // Skip repeated log
     }
   }
-  
+
   recentLogs.set(logKey, Date.now());
-  
+
   // Clean old entries periodically
   if (recentLogs.size > 100) {
     const cutoff = Date.now() - LOG_THROTTLE_TIME;
@@ -59,20 +60,20 @@ function smartLog(level, message, data = {}) {
       }
     }
   }
-  
+
   const logEntry = {
     timestamp,
     level,
     message,
     ...data
   };
-  
+
   // Console output (only important logs)
   if (level === 'info' || level === 'error' || level === 'warn') {
     const emoji = level === 'error' ? '❌' : level === 'warn' ? '⚠️' : 'ℹ️';
     console.log(`${emoji} ${message}`, data.details ? `- ${data.details}` : '');
   }
-  
+
   // File output (all logs)
   const logLine = JSON.stringify(logEntry) + '\n';
   const logFile = path.join(logsDir, getLogFileName());
@@ -112,7 +113,7 @@ function loadDailyAnalyses() {
   } catch (error) {
     smartLog('error', 'Failed to load daily analyses', { error: error.message });
   }
-  
+
   // Return default structure if file doesn't exist or error
   return {
     date: getCurrentDateString(),
@@ -136,7 +137,7 @@ function saveDailyAnalyses(analysesData) {
 // Helper function to add analysis to daily storage
 function addAnalysisToDaily(analysisData) {
   const dailyData = loadDailyAnalyses();
-  
+
   // Create analysis entry
   const analysis = {
     id: `analysis_${Date.now()}`,
@@ -153,14 +154,14 @@ function addAnalysisToDaily(analysisData) {
     status: 'pending',
     completedAt: null
   };
-  
+
   dailyData.analyses.push(analysis);
-  
+
   if (saveDailyAnalyses(dailyData)) {
     smartLog('debug', 'Analysis added to daily storage', { analysisId: analysis.id });
     return analysis;
   }
-  
+
   return null;
 }
 
@@ -170,19 +171,19 @@ function scheduleDailyReset() {
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(2, 0, 0, 0); // 2:00 AM
-  
+
   const msUntilReset = tomorrow.getTime() - now.getTime();
-  
+
   setTimeout(() => {
     smartLog('info', 'Starting daily reset at 02:00');
     // The reset happens automatically when a new day starts
     // because getCurrentDateString() will return a new date
     smartLog('info', 'Daily reset completed - new day started');
-    
+
     // Schedule next reset
     scheduleDailyReset();
   }, msUntilReset);
-  
+
   smartLog('info', 'Daily reset scheduled', { nextReset: tomorrow.toLocaleString('he-IL') });
 }
 
@@ -237,7 +238,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage: storage,
   limits: {
     fileSize: 100 * 1024 * 1024 // 100MB limit
@@ -277,11 +278,11 @@ function createAnalysisPrompt(reporterName, videoDate, isAutomaticProcessing = f
     videoDate = new Date().toLocaleDateString('he-IL');
     smartLog('info', 'No date provided - using today date', { videoDate });
   }
-  
+
   // הגדר הוראות מיוחדות לעיבוד ידני או אוטומטי
   let processingInstructions = '';
   let descriptionsFormat = '';
-  
+
   if (!isAutomaticProcessing && reporterName && reporterName.trim() !== '') {
     // עיבוד ידני עם שם כתב מוגדר
     processingInstructions = ` הוראה קריטית - חובה לציית! 
@@ -299,15 +300,15 @@ function createAnalysisPrompt(reporterName, videoDate, isAutomaticProcessing = f
  זכור: אל תחליף! אל תשנה! השתמש בדיוק בפרטים שרשמתי למעלה! 
 
  תזכורת חובה: השתמש בכתב="${reporterName}" ותאריך="${videoDate}" בלבד! `;
-    
+
     descriptionsFormat = `"כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}."`;
-    
+
   } else {
     // עיבוד אוטומטי - זיהוי כתב מהסרטון
     processingInstructions = `הוראה חשובה: זהו עיבוד אוטומטי של הקובץ. זהה את שם הכתב/ת מהסרטון ויצור תוכן מקצועי בעברית.
 
  תאריך הכתבה: ${videoDate}`;
-    
+
     descriptionsFormat = `"כתבתו/כתבתה של [שם הכתב שזיהית] מתוך מהדורת כאן חדשות, ${videoDate}."`;
   }
 
@@ -434,11 +435,11 @@ ${descriptionsFormat}
 🎯 **מטרה:** תוכן מעניין ומושך אבל עובדתית מדויק לחלוטין!
 
  FINAL WARNING - אזהרה אחרונה 
-${!isAutomaticProcessing && reporterName ? 
-  `השתמש רק בכתב: "${reporterName}" ותאריך: "${videoDate}"!
+${!isAutomaticProcessing && reporterName ?
+      `השתמש רק בכתב: "${reporterName}" ותאריך: "${videoDate}"!
 אל תשתמש בשמות או תאריכים אחרים מהסרטון!
 כל תיאור חייב להסתיים במשפט הקבוע עם הפרטים הללו בלבד!` :
-  `אם אתה לא תסיים את כל התיאורים במשפט המדויק שדרשתי, התוצאה תיפסל לחלוטין!
+      `אם אתה לא תסיים את כל התיאורים במשפט המדויק שדרשתי, התוצאה תיפסל לחלוטין!
 כל תיאור חייב להסתיים במשפט הקבוע - זו הדרישה החשובה ביותר!
 אל תשכח - אל תחרוג - אל תשנה!`}`;
 }
@@ -446,15 +447,15 @@ ${!isAutomaticProcessing && reporterName ?
 // Helper function to decode Hebrew filenames
 function decodeHebrewFilename(filename) {
   if (!filename) return '';
-  
+
   // Try multiple decoding approaches
   const decodingMethods = [
     // Method 1: Direct UTF-8 conversion from latin1
     () => Buffer.from(filename, 'latin1').toString('utf8'),
-    
+
     // Method 2: URI decode
     () => decodeURIComponent(escape(filename)),
-    
+
     // Method 3: Try different encodings
     () => {
       try {
@@ -463,15 +464,15 @@ function decodeHebrewFilename(filename) {
         return filename;
       }
     },
-    
+
     // Method 4: Just return original if all fail
     () => filename
   ];
-  
+
   for (const method of decodingMethods) {
     try {
       const decoded = method();
-      
+
       // Check if the decoded string looks like Hebrew
       const hebrewRegex = /[\u0590-\u05FF]/;
       if (hebrewRegex.test(decoded) || decoded !== filename) {
@@ -482,7 +483,7 @@ function decodeHebrewFilename(filename) {
       continue; // Try next method
     }
   }
-  
+
   smartLog('warn', 'Unable to decode filename', { filename });
   return filename;
 }
@@ -500,7 +501,7 @@ function fileToGenerativePart(path, mimeType) {
 // Helper function to extract frame from video at specific timestamp
 function extractFrameFromVideo(videoPath, timestamp, outputPath) {
   smartLog('debug', 'Attempting to extract frame', { videoPath, timestamp, outputPath });
-  
+
   return new Promise((resolve, reject) => {
     // Check if input file exists
     if (!fs.existsSync(videoPath)) {
@@ -508,9 +509,9 @@ function extractFrameFromVideo(videoPath, timestamp, outputPath) {
       reject(new Error(`קובץ הוידאו לא נמצא: ${videoPath}`));
       return;
     }
-    
+
     smartLog('debug', 'Starting frame extraction with ffmpeg');
-    
+
     ffmpeg(videoPath)
       .seekInput(timestamp)
       .frames(1)
@@ -568,10 +569,10 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     mimetype: req.file.mimetype,
     path: req.file.path
   } : 'לא התקבל קובץ');
-  
+
   try {
     const { reporterName, videoDate, selectedModel } = req.body;
-    
+
     smartLog('debug', 'Request data extracted', {
       reporterName,
       videoDate,
@@ -588,7 +589,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         hasReporterName: !!reporterName,
         videoDate: videoDate || 'empty - will use today date'
       });
-      
+
       return res.status(400).json({
         error: 'חסרים שדות נדרשים: video file, reporterName'
       });
@@ -606,7 +607,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         cost: 'גבוה'
       },
       'gemini-2.5-flash': {
-        name: 'Gemini 2.5 Flash', 
+        name: 'Gemini 2.5 Flash',
         description: 'מאוזן - מהיר ויעיל',
         speed: 'מהיר',
         quality: 'גבוה',
@@ -618,13 +619,20 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
         speed: 'מהיר מאוד',
         quality: 'טוב',
         cost: 'נמוך'
+      },
+      'gemini-3-pro-preview': {
+        name: 'Gemini 3.0 Pro Preview',
+        description: 'המודל החדש ביותר - עם יכולות חשיבה מתקדמות',
+        speed: 'בינוני',
+        quality: 'מקסימלי',
+        cost: 'גבוה'
       }
     };
 
     // Select model - default to Pro if not specified
-    const modelToUse = selectedModel && availableModels[selectedModel] 
-      ? selectedModel 
-      : 'gemini-2.5-pro';
+    const modelToUse = selectedModel && availableModels[selectedModel]
+      ? selectedModel
+      : 'gemini-3-pro-preview';
 
     smartLog('info', 'Model selected', {
       model: availableModels[modelToUse].name,
@@ -646,7 +654,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
           description: "4 כותרות יוטיוב מושכות ומעניינות לסרטון"
         },
         descriptions: {
-          type: "array", 
+          type: "array",
           items: { type: "string" },
           description: `2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.' - ללא חריגות!`
         },
@@ -670,7 +678,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     smartLog('debug', 'JSON Schema descriptions field configured', { field: responseSchema.properties.descriptions.description });
 
     // Get the generative model
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: modelToUse
     });
     smartLog('info', 'Gemini model initialized successfully');
@@ -685,9 +693,9 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     console.log('- reporterName:', `"${reporterName}"`);
     console.log('- videoDate:', `"${videoDate}"`);
     console.log('- isAutomaticProcessing:', false);
-    
+
     const prompt = createAnalysisPrompt(reporterName, videoDate, false);
-    
+
     // נוסיף בדיקה שהפרומפט מכיל את הפרמטרים הנכונים
     if (prompt.includes(reporterName) && prompt.includes(videoDate)) {
       smartLog('debug', 'Prompt contains correct parameters');
@@ -696,22 +704,25 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       smartLog('debug', 'Prompt parameter check', { hasReporterName: prompt.includes(reporterName) });
       smartLog('debug', 'Prompt parameter check', { hasVideoDate: prompt.includes(videoDate) });
     }
-    
+
     // נציג חלק מהפרומפט לבדיקה
     smartLog('debug', 'Prompt preview', { preview: prompt.substring(0, 300) + '...' });
 
     smartLog('info', 'Sending request to Gemini model with JSON Schema');
-    
+
     let parsedContent;
     let attempts = 0;
     const maxAttempts = 3;
-    
+
     // נסה עד 3 פעמים לקבל JSON תקין
     while (attempts < maxAttempts) {
       attempts++;
       smartLog('debug', 'Analysis attempt', { attempt: attempts, maxAttempts });
-      
+
       try {
+        let generatedContent;
+
+        // כל המודלים משתמשים באותו SDK (עובד טוב יותר גם עם Gemini 3.0!)
         const result = await model.generateContent({
           contents: [{ parts: [{ text: prompt }, videoPart] }],
           generationConfig: {
@@ -721,18 +732,18 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
             maxOutputTokens: 4096
           }
         });
-        
+
         const response = await result.response;
-        let generatedContent = response.text();
+        generatedContent = response.text();
         smartLog('info', 'Response received from model', { contentLength: generatedContent.length });
-        
+
         // אם זה thinking model, חפש את ה-JSON האחרון בתוכן
         if (generatedContent.includes('```json') || generatedContent.includes('{')) {
           smartLog('debug', 'Thinking model detected - searching for final JSON');
-          
+
           // חפש את כל בלוקי ה-JSON בתוכן
           const jsonBlocks = [];
-          
+
           // חפש JSON בתוך ```json blocks
           const jsonCodeBlocks = generatedContent.match(/```json\s*([\s\S]*?)\s*```/g);
           if (jsonCodeBlocks) {
@@ -743,7 +754,7 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
               }
             });
           }
-          
+
           // חפש JSON ישירות (שמתחיל ב-{ ומסתיים ב-})
           const jsonMatches = generatedContent.match(/\{[\s\S]*?\}(?=\s*$|\s*\n\s*$)/g);
           if (jsonMatches) {
@@ -753,14 +764,14 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
               }
             });
           }
-          
+
           // קח את ה-JSON האחרון שנמצא
           if (jsonBlocks.length > 0) {
             generatedContent = jsonBlocks[jsonBlocks.length - 1];
             smartLog('debug', 'Final JSON found', { contentLength: generatedContent.length });
           }
         }
-        
+
         // פרסור ה-JSON
         parsedContent = JSON.parse(generatedContent);
         smartLog('info', 'JSON parsed successfully');
@@ -771,12 +782,12 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
           thumbnails: parsedContent.thumbnails?.length || 0
         });
         break;
-        
+
       } catch (error) {
         smartLog('error', 'Manual analysis attempt failed', { attempt: attempts, error: error.message });
         if (attempts === maxAttempts) {
           // אם כל הניסיונות נכשלו, החזר תוכן בסיסי
-          parsedContent = { 
+          parsedContent = {
             summary: "שגיאה בניתוח הסרטון - נסה שוב",
             titles: ["כתבה של " + reporterName, "חדשות מ-" + videoDate, "עדכון חדשותי", "דיווח מיוחד של " + reporterName],
             descriptions: [
@@ -784,8 +795,8 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
               `עדכון חדשותי מיוחד - המערכת זמנית לא זמינה. כתבתו של ${reporterName} מתוך מהדורת כאן חדשות, ${videoDate}.`
             ],
             thumbnails: [
-              {"timestamp": "00:10", "description": "פתיחת הכתבה"},
-              {"timestamp": "00:30", "description": "רגע מרכזי בכתבה"}
+              { "timestamp": "00:10", "description": "פתיחת הכתבה" },
+              { "timestamp": "00:30", "description": "רגע מרכזי בכתבה" }
             ]
           };
           break;
@@ -840,23 +851,23 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
   } catch (error) {
     smartLog('error', 'Content generation failed', { error: error.message });
     console.error('Stack trace:', error.stack);
-    
+
     // Clean up uploaded file if error occurs
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    
+
     res.status(500).json({
       error: 'שגיאה בשרת: ' + error.message
     });
   }
-  });
-  
+});
+
 
 // Endpoint לחילוץ תמונת ת'מבנייל (לפי בקשה בלבד, ללא שמירה)
 app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
   smartLog('info', 'Thumbnail extraction request started');
-  
+
   try {
     const { timestamp } = req.body;
     const videoFile = req.file;
@@ -879,15 +890,15 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
     // Move the thumbnail to the thumbnails directory with a permanent name
     const thumbnailFileName = `thumbnail_${Date.now()}_${timestamp.replace(/[:.]/g, '_')}.jpg`;
     const thumbnailPath = path.join(__dirname, 'thumbnails', thumbnailFileName);
-    
+
     // Ensure thumbnails directory exists
     if (!fs.existsSync(path.join(__dirname, 'thumbnails'))) {
       fs.mkdirSync(path.join(__dirname, 'thumbnails'), { recursive: true });
     }
-    
+
     // Move the temp file to permanent location
     fs.renameSync(tempPath, thumbnailPath);
-    
+
     // Clean up uploaded video file
     fs.unlinkSync(videoFile.path);
 
@@ -900,22 +911,22 @@ app.post('/api/extract-thumbnail', upload.single('video'), async (req, res) => {
 
   } catch (error) {
     smartLog('error', 'Thumbnail extraction failed', { error: error.message });
-    
+
     // Clean up on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    
+
     res.status(500).json({
       error: 'שגיאה בחילוץ ת\'מבנייל: ' + error.message
     });
   }
 });
 
-  // Endpoint לשמירת פידבק משתמש
+// Endpoint לשמירת פידבק משתמש
 app.post('/api/feedback', async (req, res) => {
   smartLog('info', 'Feedback submission request started');
-  
+
   try {
     const { contentType, contentText, feedback, explanation, reporter, videoDate } = req.body;
 
@@ -964,7 +975,7 @@ app.post('/api/feedback', async (req, res) => {
         ]);
 
         smartLog('info', 'Feedback saved to Airtable', { recordId: record[0].getId() });
-        
+
         res.json({
           success: true,
           message: 'פידבק נשמר בהצלחה ב-Airtable',
@@ -974,10 +985,10 @@ app.post('/api/feedback', async (req, res) => {
 
       } catch (airtableError) {
         smartLog('error', 'Airtable save failed', { error: airtableError.message });
-        
+
         // גם אם יש שגיאה ב-Airtable, עדיין נחזיר הצלחה
         smartLog('info', 'Feedback saved locally', { feedbackId: feedbackData.id });
-        
+
         res.json({
           success: true,
           message: 'פידבק נשמר מקומית (שגיאה ב-Airtable)',
@@ -988,7 +999,7 @@ app.post('/api/feedback', async (req, res) => {
     } else {
       // אין Airtable - רק לוג מקומי
       smartLog('info', 'Feedback saved locally', { feedbackId: feedbackData.id });
-      
+
       res.json({
         success: true,
         message: 'פידבק נשמר מקומית (Airtable לא מוגדר)',
@@ -998,7 +1009,7 @@ app.post('/api/feedback', async (req, res) => {
 
   } catch (error) {
     smartLog('error', 'Feedback save failed', { error: error.message });
-    
+
     res.status(500).json({
       error: 'שגיאה בשמירת פידבק: ' + error.message
     });
@@ -1018,7 +1029,7 @@ app.get('/api/models', (req, res) => {
       default: true
     },
     'gemini-2.5-flash': {
-      name: 'Gemini 2.5 Flash', 
+      name: 'Gemini 2.5 Flash',
       description: 'מאוזן - מהיר ויעיל',
       speed: 'מהיר',
       quality: 'גבוה',
@@ -1032,20 +1043,28 @@ app.get('/api/models', (req, res) => {
       quality: 'טוב',
       cost: 'נמוך',
       recommended: 'לעיבוד מהיר בכמויות גדולות'
+    },
+    'gemini-3-pro-preview': {
+      name: 'Gemini 3.0 Pro Preview',
+      description: 'המודל החדש ביותר - עם יכולות חשיבה מתקדמות',
+      speed: 'בינוני',
+      quality: 'מקסימלי',
+      cost: 'גבוה',
+      recommended: 'לניתוח מעמיק ומדויק ביותר'
     }
   };
 
   res.json({
     success: true,
     models: availableModels,
-    defaultModel: 'gemini-2.5-pro'
+    defaultModel: 'gemini-3-pro-preview'
   });
 });
 
 // Endpoint לקבלת רשימת תאריכים זמינים
 app.get('/api/available-dates', (req, res) => {
   smartLog('debug', 'API request: available-dates', { endpoint: '/api/available-dates' });
-  
+
   try {
     const files = fs.readdirSync(dailyAnalysesDir);
     const dates = files
@@ -1055,7 +1074,7 @@ app.get('/api/available-dates', (req, res) => {
         const filePath = path.join(dailyAnalysesDir, file);
         const stats = fs.statSync(filePath);
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        
+
         return {
           date: dateStr,
           displayDate: new Date(dateStr + 'T00:00:00').toLocaleDateString('he-IL'),
@@ -1064,15 +1083,15 @@ app.get('/api/available-dates', (req, res) => {
         };
       })
       .sort((a, b) => b.date.localeCompare(a.date)); // Sort newest first
-    
+
     smartLog('debug', 'Available dates found', { count: dates.length });
-    
+
     res.json({
       success: true,
       dates: dates,
       currentDate: getCurrentDateString()
     });
-    
+
   } catch (error) {
     smartLog('error', 'Failed to get available dates', { error: error.message });
     res.status(500).json({
@@ -1084,22 +1103,22 @@ app.get('/api/available-dates', (req, res) => {
 
 // Endpoint לקבלת ניתוחים יומיים (עם תמיכה בתאריך ספציפי)
 app.get('/api/daily-analyses', (req, res) => {
-  smartLog('debug', 'API request: daily-analyses', { 
+  smartLog('debug', 'API request: daily-analyses', {
     endpoint: '/api/daily-analyses',
-    requestedDate: req.query.date 
+    requestedDate: req.query.date
   });
-  
+
   const requestedDate = req.query.date; // Get date from query parameter
-  
+
   try {
     let dailyData;
     let targetDate;
-    
+
     if (requestedDate) {
       // Load specific date
       targetDate = requestedDate;
       const filePath = path.join(dailyAnalysesDir, `analyses_${requestedDate}.json`);
-      
+
       if (fs.existsSync(filePath)) {
         const data = fs.readFileSync(filePath, 'utf8');
         dailyData = JSON.parse(data);
@@ -1121,10 +1140,10 @@ app.get('/api/daily-analyses', (req, res) => {
       dailyData = loadDailyAnalyses();
       targetDate = dailyData.date;
     }
-    
-    smartLog('debug', 'Analyses found for date', { 
-      count: dailyData.analyses.length, 
-      date: targetDate 
+
+    smartLog('debug', 'Analyses found for date', {
+      count: dailyData.analyses.length,
+      date: targetDate
     });
 
     // Sort analyses by timestamp - newest first (reverse chronological order)
@@ -1140,7 +1159,7 @@ app.get('/api/daily-analyses', (req, res) => {
       pendingCount: dailyData.analyses.filter(a => a.status === 'pending').length,
       completedCount: dailyData.analyses.filter(a => a.status === 'completed').length
     });
-    
+
   } catch (error) {
     smartLog('error', 'Failed to get daily analyses', { error: error.message });
     res.status(500).json({
@@ -1152,39 +1171,39 @@ app.get('/api/daily-analyses', (req, res) => {
 // Endpoint לעדכון סטטוס ניתוח
 app.put('/api/analysis/:id/status', (req, res) => {
   smartLog('info', 'Analysis status update request started');
-  
+
   try {
     const { id } = req.params;
     const { status } = req.body;
-    
+
     if (!id || !status) {
       return res.status(400).json({
         error: 'חסרים פרמטרים נדרשים: id, status'
       });
     }
-    
+
     if (!['pending', 'completed'].includes(status)) {
       return res.status(400).json({
         error: 'סטטוס לא חוקי. חייב להיות: pending או completed'
       });
     }
-    
+
     const dailyData = loadDailyAnalyses();
     const analysisIndex = dailyData.analyses.findIndex(a => a.id === id);
-    
+
     if (analysisIndex === -1) {
       return res.status(404).json({
         error: 'ניתוח לא נמצא'
       });
     }
-    
+
     // Update analysis status
     dailyData.analyses[analysisIndex].status = status;
     dailyData.analyses[analysisIndex].completedAt = status === 'completed' ? new Date().toISOString() : null;
-    
+
     if (saveDailyAnalyses(dailyData)) {
       smartLog('info', 'Analysis status updated', { analysisId: id, newStatus: status });
-      
+
       res.json({
         success: true,
         message: `סטטוס ניתוח עודכן ל-${status}`,
@@ -1195,7 +1214,7 @@ app.put('/api/analysis/:id/status', (req, res) => {
         error: 'שגיאה בשמירת עדכון הסטטוס'
       });
     }
-    
+
   } catch (error) {
     smartLog('error', 'Analysis status update failed', { error: error.message });
     res.status(500).json({
@@ -1207,31 +1226,31 @@ app.put('/api/analysis/:id/status', (req, res) => {
 // Endpoint למחיקת ניתוח
 app.delete('/api/analysis/:id', (req, res) => {
   smartLog('info', 'Analysis deletion request started');
-  
+
   try {
     const { id } = req.params;
-    
+
     if (!id) {
       return res.status(400).json({
         error: 'חסר מזהה ניתוח'
       });
     }
-    
+
     // Search through all daily analysis files to find the analysis
     const analysesDir = path.join(__dirname, 'daily_analyses');
     let foundAnalysis = null;
     let targetFile = null;
-    
+
     if (fs.existsSync(analysesDir)) {
       const files = fs.readdirSync(analysesDir);
-      
+
       for (const file of files) {
         if (file.startsWith('analyses_') && file.endsWith('.json')) {
           const filePath = path.join(analysesDir, file);
           try {
             const data = fs.readFileSync(filePath, 'utf8');
             const dailyData = JSON.parse(data);
-            
+
             const analysisIndex = dailyData.analyses.findIndex(a => a.id === id);
             if (analysisIndex !== -1) {
               foundAnalysis = dailyData.analyses[analysisIndex];
@@ -1244,21 +1263,21 @@ app.delete('/api/analysis/:id', (req, res) => {
         }
       }
     }
-    
+
     if (!foundAnalysis || !targetFile) {
       return res.status(404).json({
         error: 'ניתוח לא נמצא בשום תאריך'
       });
     }
-    
+
     // Remove analysis from array
     const deletedAnalysis = targetFile.dailyData.analyses.splice(targetFile.analysisIndex, 1)[0];
-    
+
     // Save the updated file
     try {
       fs.writeFileSync(targetFile.filePath, JSON.stringify(targetFile.dailyData, null, 2), 'utf8');
       smartLog('info', 'Analysis deleted', { analysisId: id, reporterName: deletedAnalysis.reporterName });
-      
+
       res.json({
         success: true,
         message: 'ניתוח נמחק בהצלחה',
@@ -1274,7 +1293,7 @@ app.delete('/api/analysis/:id', (req, res) => {
         error: 'שגיאה בשמירת הקובץ לאחר מחיקה'
       });
     }
-    
+
   } catch (error) {
     smartLog('error', 'Analysis deletion failed', { error: error.message });
     res.status(500).json({
@@ -1291,7 +1310,7 @@ let watcherSettings = {
   watchFolder: '',
   isEnabled: false,
   processedFiles: [], // Track processed files to avoid duplicates
-  selectedModel: 'gemini-2.5-pro' // Default to Pro model for watcher
+  selectedModel: 'gemini-3-pro-preview' // Default to Gemini 3.0 model for watcher
 };
 
 // Track files currently being processed to avoid duplicate processing
@@ -1333,17 +1352,17 @@ function logFileProcessing(filename, filePath, decision, reason) {
     decision, // 'processed', 'skipped', 'error'
     reason
   };
-  
+
   // Ensure processing log directory exists
   const logsDir = path.join(__dirname, 'processing_logs');
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir);
   }
-  
+
   // Create daily log file
   const dateString = getCurrentDateString();
   const logFilePath = path.join(logsDir, `processing_${dateString}.json`);
-  
+
   let logs = [];
   try {
     if (fs.existsSync(logFilePath)) {
@@ -1353,9 +1372,9 @@ function logFileProcessing(filename, filePath, decision, reason) {
   } catch (error) {
     smartLog('warn', 'Failed to load existing logs', { error: error.message });
   }
-  
+
   logs.push(logEntry);
-  
+
   try {
     fs.writeFileSync(logFilePath, JSON.stringify(logs, null, 2), 'utf8');
     smartLog('debug', 'Watcher log saved', { decision, filename, reason });
@@ -1371,25 +1390,25 @@ function shouldProcessFile(filename, filePath) {
       logFileProcessing(filename, filePath, 'skipped', 'לא מתחיל ב-20_vtr');
       return false;
     }
-    
+
     // Check if file is MP4
     if (!filename.toLowerCase().endsWith('.mp4')) {
       logFileProcessing(filename, filePath, 'skipped', 'לא קובץ MP4');
       return false;
     }
-    
+
     // Check if already processed
     if (watcherSettings.processedFiles.includes(filename)) {
       logFileProcessing(filename, filePath, 'skipped', 'כבר עובד בעבר (כפילות)');
       return false;
     }
-    
+
     // Check if currently being processed
     if (currentlyProcessing.has(filename)) {
       logFileProcessing(filename, filePath, 'skipped', 'נמצא כעת בתהליך עיבוד');
       return false;
     }
-    
+
     // Check file duration (must be > 1 minute)
     return new Promise((resolve) => {
       ffmpeg.ffprobe(filePath, (err, metadata) => {
@@ -1399,10 +1418,10 @@ function shouldProcessFile(filename, filePath) {
           resolve(false);
           return;
         }
-        
+
         const duration = metadata.format.duration;
         const isLongEnough = duration && duration > 60; // More than 1 minute
-        
+
         if (isLongEnough) {
           logFileProcessing(filename, filePath, 'processed', `אורך מתאים: ${Math.round(duration)}s`);
           smartLog('debug', 'File duration check', { filename, duration, isLongEnough });
@@ -1410,11 +1429,11 @@ function shouldProcessFile(filename, filePath) {
           logFileProcessing(filename, filePath, 'skipped', `אורך קצר מדי: ${Math.round(duration)}s (נדרש >60s)`);
           smartLog('debug', 'File too short', { filename, duration });
         }
-        
+
         resolve(isLongEnough);
       });
     });
-    
+
   } catch (error) {
     smartLog('error', 'File check failed', { error: error.message });
     logFileProcessing(filename, filePath, 'error', `שגיאה כללית: ${error.message}`);
@@ -1426,20 +1445,20 @@ function shouldProcessFile(filename, filePath) {
 async function processVideoFile(filePath, filename) {
   // Mark as currently processing
   currentlyProcessing.add(filename);
-  
+
   try {
     smartLog('info', 'Automatic processing started', { filename });
-    
 
-    
+
+
     // Get current date for the analysis
     const currentDate = new Date().toLocaleDateString('he-IL');
-    
+
     // Create form data for analysis
     const formData = {
       reporterName: '', // No reporter name for automatic processing
       videoDate: currentDate,
-      selectedModel: watcherSettings.selectedModel || 'gemini-2.5-pro', // Use selected model from settings
+      selectedModel: watcherSettings.selectedModel || 'gemini-3-pro-preview', // Use selected model from settings
       videoFile: {
         path: filePath,
         filename: filename,
@@ -1447,19 +1466,19 @@ async function processVideoFile(filePath, filename) {
         size: fs.statSync(filePath).size
       }
     };
-    
+
     // Process using existing analysis logic
     smartLog('info', 'Sending for automatic analysis');
     const result = await analyzeVideoAutomatically(formData);
-    
+
     if (result.success) {
       smartLog('info', 'Automatic processing completed', { filename });
-      
+
       // Mark as processed only after successful analysis
       watcherSettings.processedFiles.push(filename);
       saveWatcherSettings();
       smartLog('debug', 'File added to processed list', { filename });
-      
+
       // Add to daily analyses
       const analysisData = {
         reporterName: 'עיבוד אוטומטי',
@@ -1473,17 +1492,17 @@ async function processVideoFile(filePath, filename) {
         fileSize: formData.videoFile.size,
         originalPath: filePath // שמור את הנתיב המקורי
       };
-      
+
 
 
       addAnalysisToDaily(analysisData);
       smartLog('info', 'Analysis saved to daily file');
-      
+
     } else {
       smartLog('error', 'Automatic processing failed', { error: result.error });
       // Don't add to processed files if analysis failed
     }
-    
+
   } catch (error) {
     smartLog('error', 'Automatic file processing failed', { filename, error: error.message });
     // Don't add to processed files if error occurred
@@ -1497,16 +1516,16 @@ async function processVideoFile(filePath, filename) {
 // Automatic analysis function (uses the same full prompt as manual processing)
 async function analyzeVideoAutomatically(formData) {
   const startTime = Date.now();
-  
+
   try {
     // Get the generative model (use selected model from settings)
-    const model = genAI.getGenerativeModel({ 
-      model: formData.selectedModel || 'gemini-2.5-pro'
+    const model = genAI.getGenerativeModel({
+      model: formData.selectedModel || 'gemini-3-pro-preview'
     });
-    
+
     // Convert video file
     const videoPart = fileToGenerativePart(formData.videoFile.path, formData.videoFile.mimetype);
-    
+
     // Use the same detailed Hebrew prompt as manual analysis
     const prompt = createAnalysisPrompt('', formData.videoDate, true);
 
@@ -1523,7 +1542,7 @@ async function analyzeVideoAutomatically(formData) {
           description: "4 כותרות יוטיוב מושכות ומעניינות לסרטון"
         },
         descriptions: {
-          type: "array", 
+          type: "array",
           items: { type: "string" },
           description: `2 תיאורים לסרטון. חובה מוחלטת: כל תיאור חייב להסתיים בדיוק במשפט 'כתבתו/כתבתה של [שם הכתב שזיהית מהסרטון] מתוך מהדורת כאן חדשות, ${formData.videoDate}.' - ללא חריגות!`
         },
@@ -1542,18 +1561,18 @@ async function analyzeVideoAutomatically(formData) {
       },
       required: ["summary", "titles", "descriptions", "thumbnails"]
     };
-    
+
     smartLog('info', 'Sending request to Gemini model with JSON Schema');
-    
+
     let parsedContent;
     let attempts = 0;
     const maxAttempts = 3;
-    
+
     // נסה עד 3 פעמים לקבל JSON תקין
     while (attempts < maxAttempts) {
       attempts++;
       smartLog('debug', 'Analysis attempt', { attempt: attempts, maxAttempts });
-      
+
       try {
         const result = await model.generateContent({
           contents: [{ parts: [{ text: prompt }, videoPart] }],
@@ -1564,18 +1583,18 @@ async function analyzeVideoAutomatically(formData) {
             maxOutputTokens: 4096
           }
         });
-        
+
         const response = await result.response;
         let generatedContent = response.text();
         smartLog('info', 'Response received from model', { contentLength: generatedContent.length });
-        
+
         // אם זה thinking model, חפש את ה-JSON האחרון בתוכן
         if (generatedContent.includes('```json') || generatedContent.includes('{')) {
           smartLog('debug', 'Thinking model detected - searching for final JSON');
-          
+
           // חפש את כל בלוקי ה-JSON בתוכן
           const jsonBlocks = [];
-          
+
           // חפש JSON בתוך ```json blocks
           const jsonCodeBlocks = generatedContent.match(/```json\s*([\s\S]*?)\s*```/g);
           if (jsonCodeBlocks) {
@@ -1586,7 +1605,7 @@ async function analyzeVideoAutomatically(formData) {
               }
             });
           }
-          
+
           // חפש JSON ישירות (שמתחיל ב-{ ומסתיים ב-})
           const jsonMatches = generatedContent.match(/\{[\s\S]*?\}(?=\s*$|\s*\n\s*$)/g);
           if (jsonMatches) {
@@ -1596,13 +1615,13 @@ async function analyzeVideoAutomatically(formData) {
               }
             });
           }
-          
+
           if (jsonBlocks.length > 0) {
             smartLog('debug', 'Final JSON found in automatic analysis', { contentLength: jsonBlocks[jsonBlocks.length - 1].length });
             generatedContent = jsonBlocks[jsonBlocks.length - 1]; // קח את האחרון
           }
         }
-        
+
         // נסה לפרסר את ה-JSON
         parsedContent = JSON.parse(generatedContent);
         smartLog('info', 'JSON parsed successfully');
@@ -1612,9 +1631,9 @@ async function analyzeVideoAutomatically(formData) {
           descriptions: parsedContent.descriptions?.length || 0,
           thumbnails: parsedContent.thumbnails?.length || 0
         });
-        
+
         break; // הצלחנו - צא מהלולאה
-        
+
       } catch (error) {
         smartLog('error', 'Analysis attempt failed', { attempt: attempts, error: error.message });
         if (attempts >= maxAttempts) {
@@ -1624,15 +1643,15 @@ async function analyzeVideoAutomatically(formData) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    
+
     const processingTime = Date.now() - startTime;
-    
+
     return {
       success: true,
       content: parsedContent,
       processingTime: processingTime
     };
-    
+
   } catch (error) {
     smartLog('error', 'Automatic analysis failed', { error: error.message });
     return {
@@ -1653,19 +1672,19 @@ function startFileWatcher() {
     smartLog('warn', 'File watcher not enabled or path not configured');
     return;
   }
-  
+
   if (!fs.existsSync(watcherSettings.watchFolder)) {
     smartLog('error', 'Watch folder does not exist', { folder: watcherSettings.watchFolder });
     return;
   }
-  
+
   // Stop existing watcher if running
   if (fileWatcher) {
     fileWatcher.close();
   }
-  
+
   smartLog('info', 'File watcher started', { folder: watcherSettings.watchFolder });
-  
+
   fileWatcher = chokidar.watch(watcherSettings.watchFolder, {
     ignored: /[\/\\]\./, // ignore dotfiles
     persistent: true,
@@ -1673,14 +1692,14 @@ function startFileWatcher() {
     usePolling: true,    // חובה לרשת
     interval: 300000,    // כל 5 דקות - הגיוני לרשת
   });
-  
+
   fileWatcher.on('add', async (filePath) => {
     const filename = path.basename(filePath);
     smartLog('info', 'New file detected', { filename, path: filePath });
-    
+
     // Check if file meets criteria
     const shouldProcess = await shouldProcessFile(filename, filePath);
-    
+
     if (shouldProcess) {
       smartLog('info', 'File processing started', { filename });
       await processVideoFile(filePath, filename);
@@ -1688,7 +1707,7 @@ function startFileWatcher() {
       smartLog('debug', 'File skipped', { filename, reason: 'does not meet criteria' });
     }
   });
-  
+
   fileWatcher.on('error', (error) => {
     smartLog('error', 'File watcher error', { error: error.message });
   });
@@ -1725,19 +1744,19 @@ app.get('/api/watcher/settings', (req, res) => {
 app.post('/api/watcher/settings', (req, res) => {
   try {
     const { watchFolder, isEnabled, selectedModel } = req.body;
-    
+
     if (watchFolder !== undefined) {
       watcherSettings.watchFolder = watchFolder;
     }
-    
+
     if (isEnabled !== undefined) {
       watcherSettings.isEnabled = isEnabled;
     }
-    
+
     if (selectedModel !== undefined) {
       watcherSettings.selectedModel = selectedModel;
     }
-    
+
     if (saveWatcherSettings()) {
       // Restart watcher if enabled
       if (watcherSettings.isEnabled) {
@@ -1745,7 +1764,7 @@ app.post('/api/watcher/settings', (req, res) => {
       } else {
         stopFileWatcher();
       }
-      
+
       res.json({
         success: true,
         message: 'הגדרות עודכנו בהצלחה',
@@ -1761,7 +1780,7 @@ app.post('/api/watcher/settings', (req, res) => {
         error: 'שגיאה בשמירת הגדרות'
       });
     }
-    
+
   } catch (error) {
     smartLog('error', 'Watcher settings update failed', { error: error.message });
     res.status(500).json({
@@ -1815,13 +1834,13 @@ app.get('/api/watcher/logs', (req, res) => {
     const dateString = getCurrentDateString();
     const logsDir = path.join(__dirname, 'processing_logs');
     const logFilePath = path.join(logsDir, `processing_${dateString}.json`);
-    
+
     let logs = [];
     if (fs.existsSync(logFilePath)) {
       const data = fs.readFileSync(logFilePath, 'utf8');
       logs = JSON.parse(data);
     }
-    
+
     // Get summary stats
     const stats = {
       total: logs.length,
@@ -1830,14 +1849,14 @@ app.get('/api/watcher/logs', (req, res) => {
       errors: logs.filter(log => log.decision === 'error').length,
       duplicates: logs.filter(log => log.reason.includes('כפילות')).length
     };
-    
+
     res.json({
       success: true,
       logs: logs.reverse(), // Most recent first
       stats,
       date: dateString
     });
-    
+
   } catch (error) {
     smartLog('error', 'Failed to load logs', { error: error.message });
     res.status(500).json({
@@ -1863,6 +1882,118 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'השרת פועל תקין' });
 });
 
+// === API Key Test Endpoints ===
+
+// Test API Key with Gemini 2.5 Flash (fastest)
+app.get('/api/test-api-key', async (req, res) => {
+  smartLog('info', 'API Key test requested');
+  
+  try {
+    // Quick test with Gemini 2.5 Flash (fastest model)
+    const testModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    const result = await testModel.generateContent({
+      contents: [{ parts: [{ text: 'Reply with only: OK' }] }],
+      generationConfig: {
+        maxOutputTokens: 10,
+        temperature: 0
+      }
+    });
+    
+    const response = await result.response;
+    const text = response.text();
+    
+    smartLog('info', 'API Key test successful', { response: text });
+    
+    res.json({
+      success: true,
+      message: 'מפתח ה-API תקין ופעיל!',
+      response: text.trim(),
+      model: 'gemini-2.5-flash',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    smartLog('error', 'API Key test failed', { error: error.message });
+    
+    let errorMessage = 'שגיאה לא ידועה';
+    if (error.message.includes('API_KEY_INVALID') || error.message.includes('invalid')) {
+      errorMessage = 'מפתח ה-API לא תקין';
+    } else if (error.message.includes('QUOTA_EXCEEDED') || error.message.includes('quota')) {
+      errorMessage = 'חריגה ממכסת השימוש';
+    } else if (error.message.includes('PERMISSION_DENIED')) {
+      errorMessage = 'אין הרשאה למודל זה';
+    } else if (error.message.includes('not found') || error.message.includes('404')) {
+      errorMessage = 'מפתח ה-API לא נמצא או לא מוגדר';
+    } else {
+      errorMessage = error.message;
+    }
+    
+    res.status(400).json({
+      success: false,
+      message: errorMessage,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Test Gemini 3.0 Pro Preview specifically
+app.get('/api/test-gemini3', async (req, res) => {
+  smartLog('info', 'Gemini 3.0 test requested');
+  
+  try {
+    const ai = new GoogleGenAI_V2({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY });
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: [{ role: 'user', parts: [{ text: 'Reply with only: OK' }] }],
+      config: { 
+        maxOutputTokens: 10,
+        temperature: 0
+      }
+    });
+    
+    let text = '';
+    if (response.text) {
+      text = typeof response.text === 'function' ? response.text() : response.text;
+    } else if (response.candidates && response.candidates[0]) {
+      text = response.candidates[0].content?.parts?.[0]?.text || 'OK';
+    }
+    
+    smartLog('info', 'Gemini 3.0 test successful', { response: text });
+    
+    res.json({
+      success: true,
+      message: 'Gemini 3.0 Pro Preview פעיל ועובד!',
+      response: text.trim(),
+      model: 'gemini-3-pro-preview',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    smartLog('error', 'Gemini 3.0 test failed', { error: error.message });
+    
+    let errorMessage = 'שגיאה לא ידועה';
+    if (error.message.includes('overloaded') || error.message.includes('503')) {
+      errorMessage = 'המודל עמוס כרגע, נסה שוב מאוחר יותר';
+    } else if (error.message.includes('not found') || error.message.includes('404')) {
+      errorMessage = 'מודל Gemini 3.0 לא זמין (עדיין בגרסת preview)';
+    } else {
+      errorMessage = error.message;
+    }
+    
+    res.status(400).json({
+      success: false,
+      message: 'Gemini 3.0 לא זמין: ' + errorMessage,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// === End API Key Test Endpoints ===
+
 // Catch-all handler: serve React app for any non-API routes  
 app.use((req, res, next) => {
   // If it's an API route, let it fall through to 404
@@ -1880,7 +2011,7 @@ app.listen(PORT, '0.0.0.0', () => {
     networkUrl: `http://[YOUR_IP]:${PORT}`,
     apiKeyConfigured: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)
   });
-  
+
   console.log(`🌐 Server running on port ${PORT}`);
   console.log(`🏠 Local: http://localhost:${PORT}`);
   console.log(`🏢 Network: http://[YOUR_IP]:${PORT}`);

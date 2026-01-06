@@ -55,16 +55,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
     watchFolder: '',
     isEnabled: false,
     processedFilesCount: 0,
-    selectedModel: 'gemini-2.5-pro' // Default to Pro
+    selectedModel: 'gemini-3-pro-preview' // Default to Gemini 3.0
   });
   const [status, setStatus] = useState<WatcherStatus | null>(null);
   const [logs, setLogs] = useState<ProcessingLogs | null>(null);
   const [tempWatchFolder, setTempWatchFolder] = useState('');
-  const [tempSelectedModel, setTempSelectedModel] = useState('gemini-2.5-pro');
+  const [tempSelectedModel, setTempSelectedModel] = useState('gemini-3-pro-preview');
   const [availableModels, setAvailableModels] = useState<Record<string, Model>>({});
   const [modelsLoading, setModelsLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  
+  // API Key test state
+  const [apiTestStatus, setApiTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [apiTestMessage, setApiTestMessage] = useState('');
+  const [gemini3TestStatus, setGemini3TestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [gemini3TestMessage, setGemini3TestMessage] = useState('');
 
   // Load settings and status on component mount
   useEffect(() => {
@@ -104,7 +110,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
       if (data.success) {
         setSettings(data.settings);
         setTempWatchFolder(data.settings.watchFolder);
-        setTempSelectedModel(data.settings.selectedModel || 'gemini-2.5-pro');
+        setTempSelectedModel(data.settings.selectedModel || 'gemini-3-pro-preview');
       }
     } catch (error) {
       console.error('שגיאה בטעינת הגדרות:', error);
@@ -211,6 +217,62 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
     }
   };
 
+  // Test API Key function
+  const testApiKey = async () => {
+    setApiTestStatus('testing');
+    setApiTestMessage('בודק את מפתח ה-API...');
+    
+    try {
+      const response = await fetch('/api/test-api-key');
+      const data = await response.json();
+      
+      if (data.success) {
+        setApiTestStatus('success');
+        setApiTestMessage(data.message);
+      } else {
+        setApiTestStatus('error');
+        setApiTestMessage(data.message);
+      }
+    } catch (error) {
+      setApiTestStatus('error');
+      setApiTestMessage('שגיאה בחיבור לשרת');
+    }
+    
+    // Reset after 5 seconds
+    setTimeout(() => {
+      setApiTestStatus('idle');
+      setApiTestMessage('');
+    }, 5000);
+  };
+
+  // Test Gemini 3.0 function
+  const testGemini3 = async () => {
+    setGemini3TestStatus('testing');
+    setGemini3TestMessage('בודק את Gemini 3.0...');
+    
+    try {
+      const response = await fetch('/api/test-gemini3');
+      const data = await response.json();
+      
+      if (data.success) {
+        setGemini3TestStatus('success');
+        setGemini3TestMessage(data.message);
+      } else {
+        setGemini3TestStatus('error');
+        setGemini3TestMessage(data.message);
+      }
+    } catch (error) {
+      setGemini3TestStatus('error');
+      setGemini3TestMessage('שגיאה בחיבור לשרת');
+    }
+    
+    // Reset after 5 seconds
+    setTimeout(() => {
+      setGemini3TestStatus('idle');
+      setGemini3TestMessage('');
+    }, 5000);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex items-center justify-between mb-6">
@@ -249,7 +311,101 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
             </div>
           </div>
 
+          {/* API Key Test Section */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-100">
+            <h3 className="font-medium text-gray-700 mb-3 flex items-center">
+              <svg className="w-5 h-5 ml-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              בדיקת מפתחות API
+            </h3>
+            
+            <div className="flex flex-wrap gap-3">
+              {/* Test Standard API Key */}
+              <div className="flex-1 min-w-[200px]">
+                <button
+                  onClick={testApiKey}
+                  disabled={apiTestStatus === 'testing'}
+                  className={`w-full px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center ${
+                    apiTestStatus === 'testing' 
+                      ? 'bg-gray-300 cursor-wait text-gray-600' 
+                      : apiTestStatus === 'success'
+                      ? 'bg-green-500 text-white shadow-md'
+                      : apiTestStatus === 'error'
+                      ? 'bg-red-500 text-white shadow-md'
+                      : 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm hover:shadow-md'
+                  }`}
+                >
+                  {apiTestStatus === 'testing' ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      בודק...
+                    </> 
+                  ) : apiTestStatus === 'success' ? (
+                    <>✅ תקין!</>
+                  ) : apiTestStatus === 'error' ? (
+                    <>❌ שגיאה</>
+                  ) : (
+                    <>🔑 בדוק API Key</>
+                  )}
+                </button>
+                {apiTestMessage && (
+                  <p className={`mt-2 text-xs text-center ${
+                    apiTestStatus === 'success' ? 'text-green-600' : 
+                    apiTestStatus === 'error' ? 'text-red-600' : 
+                    'text-gray-600'
+                  }`}>
+                    {apiTestMessage}
+                  </p>
+                )}
+              </div>
 
+              {/* Test Gemini 3.0 */}
+              <div className="flex-1 min-w-[200px]">
+                <button
+                  onClick={testGemini3}
+                  disabled={gemini3TestStatus === 'testing'}
+                  className={`w-full px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center ${
+                    gemini3TestStatus === 'testing' 
+                      ? 'bg-gray-300 cursor-wait text-gray-600' 
+                      : gemini3TestStatus === 'success'
+                      ? 'bg-green-500 text-white shadow-md'
+                      : gemini3TestStatus === 'error'
+                      ? 'bg-orange-500 text-white shadow-md'
+                      : 'bg-purple-500 text-white hover:bg-purple-600 shadow-sm hover:shadow-md'
+                  }`}
+                >
+                  {gemini3TestStatus === 'testing' ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 ml-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      בודק...
+                    </> 
+                  ) : gemini3TestStatus === 'success' ? (
+                    <>✅ Gemini 3.0 תקין!</>
+                  ) : gemini3TestStatus === 'error' ? (
+                    <>⚠️ לא זמין</>
+                  ) : (
+                    <>🚀 בדוק Gemini 3.0</>
+                  )}
+                </button>
+                {gemini3TestMessage && (
+                  <p className={`mt-2 text-xs text-center ${
+                    gemini3TestStatus === 'success' ? 'text-green-600' : 
+                    gemini3TestStatus === 'error' ? 'text-orange-600' : 
+                    'text-gray-600'
+                  }`}>
+                    {gemini3TestMessage}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Watch Folder Setting */}
           <div>
@@ -326,6 +482,22 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ isMinimized, onToggleMini
                       <div>
                         <span className="font-medium text-gray-700">מומלץ:</span>
                         <div className="text-gray-600">{availableModels[tempSelectedModel].recommended}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* אזהרת בטא ל-Gemini 3.0 */}
+                {tempSelectedModel === 'gemini-3-pro-preview' && (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-md">
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-600 text-lg">⚠️</span>
+                      <div className="text-xs text-amber-800">
+                        <strong>מודל בטא - לא יציב!</strong>
+                        <p className="mt-1">
+                          Gemini 3.0 נמצא בשלב Preview ונתקל לעיתים בבעיות קיבולת בשרתי Google.
+                          אם הניתוח נכשל, נסה מודל אחר.
+                        </p>
                       </div>
                     </div>
                   </div>

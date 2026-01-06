@@ -72,9 +72,9 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
         }
       } catch (error) {
         console.error('❌ שגיאה בטעינת מודלים:', error);
-        // Fallback to Pro if server is not available
-        setFormData(prev => ({ ...prev, selectedModel: 'gemini-2.5-pro' }));
-        console.log('⚠️ נקבע fallback למודל Pro');
+        // Fallback to Gemini 3.0 if server is not available
+        setFormData(prev => ({ ...prev, selectedModel: 'gemini-3-pro-preview' }));
+        console.log('⚠️ נקבע fallback למודל Gemini 3.0');
       } finally {
         setModelsLoading(false);
         console.log('✅ טעינת מודלים הושלמה');
@@ -285,6 +285,22 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading, error, video
                 <div>
                   <span className="font-medium text-gray-700">מומלץ:</span>
                   <div className="text-gray-600">{availableModels[formData.selectedModel].recommended}</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* אזהרת בטא ל-Gemini 3.0 */}
+          {formData.selectedModel === 'gemini-3-pro-preview' && (
+            <div className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-md">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-600 text-lg">⚠️</span>
+                <div className="text-sm text-amber-800">
+                  <strong>מודל בטא - לא יציב!</strong>
+                  <p className="mt-1">
+                    Gemini 3.0 נמצא בשלב Preview ונתקל לעיתים בבעיות קיבולת בשרתי Google.
+                    אם הניתוח נכשל, נסה מודל אחר.
+                  </p>
                 </div>
               </div>
             </div>
