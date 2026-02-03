@@ -87,8 +87,18 @@ function App() {
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
       const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/generate` : '/api/generate';
 
+      // Get custom API key from localStorage if available
+      const customApiKey = localStorage.getItem('gemini_api_key');
+      
+      // Build headers - include custom API key if available
+      const headers: HeadersInit = {};
+      if (customApiKey) {
+        headers['X-API-Key'] = customApiKey;
+      }
+
       const response = await fetch(apiUrl, {
         method: 'POST',
+        headers,
         body: submitData,
       })
 

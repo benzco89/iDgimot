@@ -262,8 +262,9 @@ const upload = multer({
   }
 });
 
-// Initialize Google Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+// Initialize Google Gemini AI (may be null if no env API key - will use client's key)
+const envApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const genAI = envApiKey ? new GoogleGenerativeAI(envApiKey) : null;
 
 // Initialize Airtable
 let airtableBase = null;
@@ -648,6 +649,19 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
       properties: availableModels[modelToUse]
     });
 
+    // Get API key from header or environment
+    const apiKey = req.headers['x-api-key'] || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(400).json({
+        error: 'לא הוגדר מפתח API. הגדר מפתח בהגדרות או בקובץ .env'
+      });
+    }
+    
+    // Create Gemini instance with the API key (from header or env)
+    // If using header key, create new instance. Otherwise use env instance (if available)
+    const activeGenAI = req.headers['x-api-key'] ? createGeminiInstance(apiKey) : (genAI || createGeminiInstance(apiKey));
+
     // הגדרת סכמת JSON מובנית למודל
     smartLog('debug', 'JSON Schema parameters', { reporterName, videoDate });
     const responseSchema = {
@@ -686,11 +700,11 @@ app.post('/api/generate', upload.single('video'), async (req, res) => {
     // הדפסת ה-JSON Schema לבדיקה
     smartLog('debug', 'JSON Schema descriptions field configured', { field: responseSchema.properties.descriptions.description });
 
-    // Get the generative model
-    const model = genAI.getGenerativeModel({
+    // Get the generative model (using active Gemini instance - from header or env)
+    const model = activeGenAI.getGenerativeModel({
       model: modelToUse
     });
-    smartLog('info', 'Gemini model initialized successfully');
+    smartLog('info', 'Gemini model initialized successfully', { usingCustomApiKey: !!req.headers['x-api-key'] });
 
     // Convert the uploaded video to the format needed by Gemini
     smartLog('debug', 'Preparing video file for model');
@@ -1527,6 +1541,11 @@ async function analyzeVideoAutomatically(formData) {
   const startTime = Date.now();
 
   try {
+    // Check if we have an API key (from env)
+    if (!genAI) {
+      throw new Error('לא הוגדר מפתח API בשרת. הגדר GEMINI_API_KEY ב-.env או השתמש בניתוח ידני עם מפתח אישי.');
+    }
+    
     // Get the generative model (use selected model from settings)
     const model = genAI.getGenerativeModel({
       model: formData.selectedModel || 'gemini-3-pro-preview'
@@ -1893,9 +1912,93 @@ app.get('/api/health', (req, res) => {
 
 // === API Key Test Endpoints ===
 
-// Test API Key with Gemini 2.5 Flash (fastest)
-app.get('/api/test-api-key', async (req, res) => {
+// Helper function to get API key from request or environment
+function getApiKey(req) {
+  // Priority: 1. Header, 2. Body, 3. Environment
+  return req.headers['x-api-key'] || req.body?.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+}
+
+// Helper function to create Gemini AI instance with custom API key
+function createGeminiInstance(apiKey) {
+  return new GoogleGenerativeAI(apiKey);
+}
+
+// Test API Key with Gemini 2.5 Flash (fastest) - supports custom API key
+app.post('/api/test-api-key', async (req, res) => {
   smartLog('info', 'API Key test requested');
+  
+  const apiKey = getApiKey(req);
+  
+  if (!apiKey) {
+    return res.status(400).json({
+      success: false,
+      message: 'לא הוזן מפתח API',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  try {
+    // Create a new Gemini instance with the provided API key
+    const testGenAI = createGeminiInstance(apiKey);
+    const testModel = testGenAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    const result = await testModel.generateContent({
+      contents: [{ parts: [{ text: 'Reply with only: OK' }] }],
+      generationConfig: {
+        maxOutputTokens: 10,
+        temperature: 0
+      }
+    });
+    
+    const response = await result.response;
+    const text = response.text();
+    
+    smartLog('info', 'API Key test successful', { response: text });
+    
+    res.json({
+      success: true,
+      message: 'מפתח ה-API תקין ופעיל!',
+      response: text.trim(),
+      model: 'gemini-2.5-flash',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    smartLog('error', 'API Key test failed', { error: error.message });
+    
+    let errorMessage = 'שגיאה לא ידועה';
+    if (error.message.includes('API_KEY_INVALID') || error.message.includes('invalid')) {
+      errorMessage = 'מפתח ה-API לא תקין';
+    } else if (error.message.includes('QUOTA_EXCEEDED') || error.message.includes('quota')) {
+      errorMessage = 'חריגה ממכסת השימוש';
+    } else if (error.message.includes('PERMISSION_DENIED')) {
+      errorMessage = 'אין הרשאה למודל זה';
+    } else if (error.message.includes('not found') || error.message.includes('404')) {
+      errorMessage = 'מפתח ה-API לא נמצא או לא מוגדר';
+    } else {
+      errorMessage = error.message;
+    }
+    
+    res.status(400).json({
+      success: false,
+      message: errorMessage,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Legacy GET endpoint for backwards compatibility (uses env API key)
+app.get('/api/test-api-key', async (req, res) => {
+  smartLog('info', 'API Key test requested (legacy GET)');
+  
+  if (!genAI) {
+    return res.status(400).json({
+      success: false,
+      message: 'לא הוגדר מפתח API בשרת',
+      timestamp: new Date().toISOString()
+    });
+  }
   
   try {
     // Quick test with Gemini 2.5 Flash (fastest model)
@@ -1947,12 +2050,86 @@ app.get('/api/test-api-key', async (req, res) => {
   }
 });
 
-// Test Gemini 3.0 Pro Preview specifically
-app.get('/api/test-gemini3', async (req, res) => {
+// Test Gemini 3.0 Pro Preview specifically - supports custom API key
+app.post('/api/test-gemini3', async (req, res) => {
   smartLog('info', 'Gemini 3.0 test requested');
   
+  const apiKey = getApiKey(req);
+  
+  if (!apiKey) {
+    return res.status(400).json({
+      success: false,
+      message: 'לא הוזן מפתח API',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
   try {
-    const ai = new GoogleGenAI_V2({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY });
+    const ai = new GoogleGenAI_V2({ apiKey });
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: [{ role: 'user', parts: [{ text: 'Reply with only: OK' }] }],
+      config: { 
+        maxOutputTokens: 10,
+        temperature: 0
+      }
+    });
+    
+    let text = '';
+    if (response.text) {
+      text = typeof response.text === 'function' ? response.text() : response.text;
+    } else if (response.candidates && response.candidates[0]) {
+      text = response.candidates[0].content?.parts?.[0]?.text || 'OK';
+    }
+    
+    smartLog('info', 'Gemini 3.0 test successful', { response: text });
+    
+    res.json({
+      success: true,
+      message: 'Gemini 3.0 Pro Preview פעיל ועובד!',
+      response: text.trim(),
+      model: 'gemini-3-pro-preview',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    smartLog('error', 'Gemini 3.0 test failed', { error: error.message });
+    
+    let errorMessage = 'שגיאה לא ידועה';
+    if (error.message.includes('overloaded') || error.message.includes('503')) {
+      errorMessage = 'המודל עמוס כרגע, נסה שוב מאוחר יותר';
+    } else if (error.message.includes('not found') || error.message.includes('404')) {
+      errorMessage = 'מודל Gemini 3.0 לא זמין (עדיין בגרסת preview)';
+    } else {
+      errorMessage = error.message;
+    }
+    
+    res.status(400).json({
+      success: false,
+      message: 'Gemini 3.0 לא זמין: ' + errorMessage,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Legacy GET endpoint for Gemini 3.0 test (backwards compatibility)
+app.get('/api/test-gemini3', async (req, res) => {
+  smartLog('info', 'Gemini 3.0 test requested (legacy GET)');
+  
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  
+  if (!apiKey) {
+    return res.status(400).json({
+      success: false,
+      message: 'לא הוגדר מפתח API בשרת',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  try {
+    const ai = new GoogleGenAI_V2({ apiKey });
     
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
